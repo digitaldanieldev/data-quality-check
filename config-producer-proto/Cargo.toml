@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 base64 = { workspace = true }
+clap = { workspace = true }
 notify = { workspace = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true }

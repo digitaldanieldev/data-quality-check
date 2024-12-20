@@ -1,4 +1,5 @@
 use base64;
+use clap::{Arg, Command};
 use notify::Watcher;
 use prost::Message;
 use prost_types::FileDescriptorSet;
@@ -10,10 +11,11 @@ use std::{
     error::Error,
     ffi::OsStr,
     path::{Path, PathBuf},
-    process::Command, sync::Arc,
+    process::Command as StdCommand, sync::Arc,
 };
 use tokio::{fs, net::TcpStream};
 use tokio::sync::Mutex as TokioMutex;
+use tokio::time::{sleep, Duration};
 use tracing::{error, info, span, Level};
 use walkdir::WalkDir;
 
@@ -22,45 +24,75 @@ use data_quality_settings::{load_env_variables, load_logging_config};
 
 #[tokio::main]
 async fn main() -> notify::Result<()> {
-    let _ = load_logging_config();
-    load_env_variables();
+    let matches = Command::new("Proto Producer")
+        .about("Processes and sends protobuf files to a server")
+        .arg(
+            Arg::new("loop")
+                .long("loop")
+                .action(clap::ArgAction::SetTrue)
+                .help("Run the program in a loop"),
+        )
+        .arg(
+            Arg::new("interval")
+                .long("interval")
+                .value_parser(clap::value_parser!(u64))
+                .default_value("10")
+                .help("Interval in seconds for each iteration if loop mode is enabled"),
+        )
+        .get_matches();
 
-    let span = span!(Level::INFO, "proto producer");
-    let _enter = span.enter();
+    let should_loop = matches.get_one::<bool>("loop").copied().unwrap_or(false);
+    let interval_seconds = *matches.get_one::<u64>("interval").unwrap();
 
-    let proto_schema_input_dir = env::var("PROTO_SCHEMA_INPUT_DIR").unwrap();
-    let dq_server_ip = env::var("DQ_SERVER_IP").unwrap_or_default();
-    let dq_server_port = env::var("DQ_SERVER_PORT").unwrap_or_default();
+    loop {
+        let _ = load_logging_config();
+        load_env_variables();
 
-    let dq_server_address = format!("{}:{}", dq_server_ip, dq_server_port);
+        let span = span!(Level::INFO, "proto producer");
+        let _enter = span.enter();
 
-    let protobuf_definitions: Arc<TokioMutex<HashMap<String, (Vec<u8>, u64)>>> =
-        Arc::new(TokioMutex::new(HashMap::new()));
-    let file_timestamps: Arc<TokioMutex<HashMap<String, u64>>> = Arc::new(TokioMutex::new(HashMap::new()));
+        let proto_schema_input_dir = env::var("PROTO_SCHEMA_INPUT_DIR").unwrap();
+        let dq_server_ip = env::var("DQ_SERVER_IP").unwrap_or_default();
+        let dq_server_port = env::var("DQ_SERVER_PORT").unwrap_or_default();
 
-    {
-        let mut definitions = protobuf_definitions.lock().await;
-        let mut timestamps = file_timestamps.lock().await;
-        load_proto_files(&proto_schema_input_dir, &mut definitions, &mut timestamps).await.unwrap();
-    }
+        let dq_server_address = format!("{}:{}", dq_server_ip, dq_server_port);
 
-    for (file_name, (file_content, _)) in &*protobuf_definitions.lock().await {
-        info!(
-            "Serializing and sending FileDescriptorSet for: {}",
-            file_name
-        );
+        let protobuf_definitions: Arc<TokioMutex<HashMap<String, (Vec<u8>, u64)>>> =
+            Arc::new(TokioMutex::new(HashMap::new()));
+        let file_timestamps: Arc<TokioMutex<HashMap<String, u64>>> =
+            Arc::new(TokioMutex::new(HashMap::new()));
 
-        let fd_set: FileDescriptorSet = prost::Message::decode(file_content.as_slice())
-            .expect("Failed to decode FileDescriptorSet");
-        let serialized_fd_set = serialize_file_descriptor_set(&fd_set);
-
-        let descriptor_server_url = format!("http://{}/load_descriptor", dq_server_address);
-        info!("descriptor_server_url: {}", &descriptor_server_url);
-
-        match send_to_axum_server(&descriptor_server_url, &file_name, &serialized_fd_set).await {
-            Ok(success_message) => info!("{}", success_message),
-            Err(err) => eprintln!("Error sending FileDescriptorSet: {}", err),
+        {
+            let mut definitions = protobuf_definitions.lock().await;
+            let mut timestamps = file_timestamps.lock().await;
+            load_proto_files(&proto_schema_input_dir, &mut definitions, &mut timestamps)
+                .await
+                .unwrap();
         }
+
+        for (file_name, (file_content, _)) in &*protobuf_definitions.lock().await {
+            info!(
+                "Serializing and sending FileDescriptorSet for: {}",
+                file_name
+            );
+
+            let fd_set: FileDescriptorSet = prost::Message::decode(file_content.as_slice())
+                .expect("Failed to decode FileDescriptorSet");
+            let serialized_fd_set = serialize_file_descriptor_set(&fd_set);
+
+            let descriptor_server_url = format!("http://{}/load_descriptor", dq_server_address);
+            info!("descriptor_server_url: {}", &descriptor_server_url);
+
+            match send_to_axum_server(&descriptor_server_url, &file_name, &serialized_fd_set).await {
+                Ok(success_message) => info!("{}", success_message),
+                Err(err) => eprintln!("Error sending FileDescriptorSet: {}", err),
+            }
+        }
+
+        if !should_loop {
+            break;
+        }
+        sleep(Duration::from_secs(interval_seconds)).await;
     }
 
     Ok(())
@@ -267,7 +299,7 @@ async fn compile_with_protoc(
     let span = span!(Level::INFO, "compile_with_protoc");
     let _enter = span.enter();
 
-    let status = Command::new(protoc_path)
+    let status = StdCommand::new(protoc_path)
         .arg("--proto_path")
         .arg(file.parent().unwrap().to_str().unwrap())
         .arg("--descriptor_set_out")
