@@ -6,11 +6,13 @@ use prost_types::FileDescriptorSet;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::{env, fs::File, io::{self, Read}, net::SocketAddr, sync::{Arc, Mutex}};
+use std::collections::HashMap;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info, span, Level};
 
 use data_quality_settings::{load_env_variables, load_logging_config};
 
+type DescriptorMap = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,12 +22,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dq_server_port = env::var("DQ_SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let port: u64 = dq_server_port.parse()?;
 
-    let descriptor_pool = Arc::new(Mutex::new(DescriptorPool::default()));
+    // Centralized descriptor storage
+    let descriptor_map = Arc::new(Mutex::new(HashMap::new()));
 
     let app = Router::new()
         .route("/load_descriptor", post(load_descriptor_handler))
         .route("/validate", post(validate_json_handler))
-        .with_state(descriptor_pool);
+        .with_state(descriptor_map);
 
     let addr = format!("0.0.0.0:{}", port).parse::<SocketAddr>()?;
     info!(
@@ -56,7 +59,7 @@ struct ValidationRequest {
 }
 
 async fn load_descriptor_handler(
-    State(descriptor_pool): State<Arc<Mutex<DescriptorPool>>>,
+    State(descriptor_map): State<DescriptorMap>,
     Json(payload): Json<LoadDescriptorRequest>,
 ) -> impl IntoResponse {
     let span = span!(Level::INFO, "load_descriptor_handler");
@@ -78,18 +81,23 @@ async fn load_descriptor_handler(
         }
     };
 
-    // Lock the descriptor pool to mutate it
-    let mut descriptor_pool = descriptor_pool.lock().unwrap();
-
-    // Load the descriptor (dummy implementation)
-    if let Err(e) = load_descriptor(&mut descriptor_pool, &file_name, &file_content) {
-        error!("Failed to load descriptor {}: {}", file_name, e);
-        return (
-            StatusCode::BAD_REQUEST,
-            format!("Failed to load descriptor: {}", e),
-        )
-            .into_response();
+    {
+        let mut descriptor_map = descriptor_map.lock().unwrap();
+        descriptor_map.insert(file_name.clone(), file_content.clone());
     }
+
+    // Rebuild the DescriptorPool with all descriptors
+    let new_descriptor_pool = match rebuild_descriptor_pool(&descriptor_map.lock().unwrap()) {
+        Ok(pool) => pool,
+        Err(err) => {
+            error!("Failed to rebuild descriptor pool: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to rebuild descriptor pool: {}", err),
+            )
+                .into_response();
+        }
+    };
 
     info!("Descriptor {} loaded successfully.", file_name);
     (
@@ -99,8 +107,33 @@ async fn load_descriptor_handler(
         .into_response()
 }
 
+fn rebuild_descriptor_pool(
+    descriptor_map: &HashMap<String, Vec<u8>>,
+) -> Result<DescriptorPool, String> {
+    let mut descriptor_pool = DescriptorPool::default();
+
+    for (file_name, file_content) in descriptor_map {
+        let file_descriptor_set: FileDescriptorSet =
+            prost::Message::decode(file_content.as_slice()).map_err(|e| {
+                let error_msg = format!("Failed to parse descriptor {}: {:?}", file_name, e);
+                error!("{}", error_msg);
+                error_msg
+            })?;
+
+        descriptor_pool
+            .add_file_descriptor_set(file_descriptor_set)
+            .map_err(|e| {
+                let error_msg = format!("Failed to add descriptor {}: {:?}", file_name, e);
+                error!("{}", error_msg);
+                error_msg
+            })?;
+    }
+
+    Ok(descriptor_pool)
+}
+
 async fn validate_json_handler(
-    State(descriptor_pool): State<Arc<Mutex<DescriptorPool>>>,
+    State(descriptor_map): State<DescriptorMap>, // Updated type to match the new `DescriptorMap`
     Json(payload): Json<ValidationRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let span = span!(Level::INFO, "validate_json_handler");
@@ -109,8 +142,19 @@ async fn validate_json_handler(
     let proto_name = payload.n.unwrap_or_else(|| "MyMessage".to_string());
     let json_message = payload.json;
 
-    let descriptor_pool = descriptor_pool.lock().unwrap();
+    // Rebuild the DescriptorPool from the current descriptor map
+    let descriptor_pool = {
+        let descriptor_map = descriptor_map.lock().unwrap();
+        match rebuild_descriptor_pool(&descriptor_map) {
+            Ok(pool) => pool,
+            Err(err) => {
+                error!("Failed to rebuild descriptor pool: {}", err);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    };
 
+    // Validate the JSON against the updated descriptor pool
     match validate_json_against_proto(&descriptor_pool, &json_message, &proto_name) {
         Ok(_) => Ok((StatusCode::OK, "JSON validation successful".to_string())),
         Err(e) => {
