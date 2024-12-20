@@ -1,0 +1,19 @@
+
+[package]
+name = "config-producer-proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64 = { workspace = true }
+notify = { workspace = true }
+prost = { workspace = true }
+prost-reflect = { workspace = true }
+prost-types = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+walkdir = { workspace = true }
+
+data-quality-settings = { workspace = true }
