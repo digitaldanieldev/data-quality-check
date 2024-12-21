@@ -1,14 +1,17 @@
 use axum::{extract::{Json, State}, http::StatusCode, response::IntoResponse, routing::post, Router};
 use base64;
-use prost::Message;
 use prost_reflect::{DescriptorPool, DynamicMessage, Kind, MessageDescriptor, SerializeOptions, Value as ProstReflectValue};
 use prost_types::FileDescriptorSet;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
-use std::{env, fs::File, io::{self, Read}, net::SocketAddr, sync::{Arc, Mutex}};
+use std::{env, net::SocketAddr, sync::{Arc, Mutex}};
 use std::collections::HashMap;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info, span, Level};
+use opentelemetry::{global, metrics::Meter, KeyValue};
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::runtime::Tokio;
 
 use data_quality_settings::{load_env_variables, load_logging_config};
 
@@ -18,6 +21,7 @@ type DescriptorMap = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = load_logging_config();
     load_env_variables();
+    let _meter_provider = init_meter_provider();
 
     let dq_server_port = env::var("DQ_SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let port: u64 = dq_server_port.parse()?;
@@ -164,15 +168,54 @@ async fn validate_json_handler(
     }
 }
 
+fn init_meter_provider() -> SdkMeterProvider {
+    let exporter = opentelemetry_stdout::MetricExporterBuilder::default()
+        .build();
+    let reader = PeriodicReader::builder(exporter, Tokio).build(); // Specify Tokio as the runtime
+    let resource = Resource::new(vec![KeyValue::new("service.name", "json-validation-service")]); 
+    let provider = SdkMeterProvider::builder()
+        .with_reader(reader)
+        .with_resource(resource)
+        .build();
+    global::set_meter_provider(provider.clone());
+    provider
+}
+
+
+fn create_metrics(meter: &Meter) -> (opentelemetry::metrics::Counter<u64>, opentelemetry::metrics::Histogram<f64>) {
+    let request_counter = meter
+        .u64_counter("validate_json_requests_total")
+        .with_description("Counts the total number of JSON validation requests")
+        .build();
+
+    let duration_histogram = meter
+        .f64_histogram("validate_json_duration_seconds")
+        .with_description("Tracks the duration of JSON validation in seconds")
+        .build();
+
+    (request_counter, duration_histogram)
+}
+
 #[tracing::instrument]
 fn validate_json_against_proto(
     descriptor_pool: &DescriptorPool,
     json_message: &str,
     definition_name: &str,
 ) -> Result<(), String> {
+    let meter = global::meter("json-validation-service");
+    let (request_counter, duration_histogram) = create_metrics(&meter);
+
+    // Record the start time
+    let start_time = std::time::Instant::now();
+
+    // Increment the request counter
+    request_counter.add(
+        1,
+        &[KeyValue::new("message_name", definition_name.to_string())],
+    );
+
     info!("Starting JSON validation for proto: {}", definition_name);
 
-    // Attempt to find the message descriptor by name
     let message_descriptor = descriptor_pool
         .get_message_by_name(definition_name)
         .ok_or_else(|| {
@@ -181,10 +224,8 @@ fn validate_json_against_proto(
             error_msg
         })?;
 
-    // Log the message descriptor details
     info!("Found message descriptor: {:?}", message_descriptor);
 
-    // Parse and validate the JSON message
     let json_value: JsonValue =
         serde_json::from_str(json_message).map_err(|e| {
             let error_msg = format!("Failed to parse JSON: {:?}", e);
@@ -192,29 +233,30 @@ fn validate_json_against_proto(
             error_msg
         })?;
 
-    info!("Successfully parsed JSON: {:?}", json_value);
-
     let mut dynamic_message = DynamicMessage::new(message_descriptor.clone());
-    match populate_dynamic_message(&mut dynamic_message, &message_descriptor, &json_value) {
-        Ok(_) => info!("Populated dynamic message successfully"),
-        Err(e) => {
+    populate_dynamic_message(&mut dynamic_message, &message_descriptor, &json_value)
+        .map_err(|e| {
             let error_msg = format!("Failed to populate dynamic message: {}", e);
             error!("{}", error_msg);
-            return Err(error_msg);
-        }
-    }
+            error_msg
+        })?;
 
-    match serialize_dynamic_message(&mut dynamic_message) {
-        Ok(_) => info!("Serialized dynamic message successfully"),
-        Err(e) => {
-            let error_msg = format!("Failed to serialize dynamic message: {}", e);
-            error!("{}", error_msg);
-            return Err(error_msg);
-        }
-    }
+    serialize_dynamic_message(&mut dynamic_message).map_err(|e| {
+        let error_msg = format!("Failed to serialize dynamic message: {}", e);
+        error!("{}", error_msg);
+        error_msg
+    })?;
+
+    // Record the duration
+    let duration = start_time.elapsed().as_secs_f64();
+    duration_histogram.record(
+        duration,
+        &[KeyValue::new("message_name", definition_name.to_string())],
+    );
 
     Ok(())
 }
+
 
 #[tracing::instrument]
 fn load_descriptor(
@@ -236,7 +278,7 @@ fn load_descriptor(
             )
         })?;
 
-    // Add the file descriptor set to the pool
+    // Add the file descriptor set to the poolww
     descriptor_pool
         .add_file_descriptor_set(file_descriptor_set)
         .map_err(|e| {
@@ -473,3 +515,4 @@ fn populate_dynamic_message(
 
     Ok(())
 }
+

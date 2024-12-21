@@ -18,6 +18,9 @@ clap = "4.5.23"
 color-eyre = "0.6.3"
 dotenvy = "0.15.7"
 notify = "7.0.0"
+opentelemetry = { version = "0.27.1", features = ["metrics"] }
+opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio"] }
+opentelemetry-stdout = "0.27.0"
 prost = "0.13.4"
 prost-build = "0.13.4" 
 prost-reflect = { version = "0.14.3", features = ["serde"] }

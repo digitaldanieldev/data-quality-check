@@ -1,6 +1,5 @@
 use base64;
 use clap::{Arg, Command};
-use notify::Watcher;
 use prost::Message;
 use prost_types::FileDescriptorSet;
 use reqwest::{Client, StatusCode};
@@ -13,7 +12,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command as StdCommand, sync::Arc,
 };
-use tokio::{fs, net::TcpStream};
+use tokio::fs;
 use tokio::sync::Mutex as TokioMutex;
 use tokio::time::{sleep, Duration};
 use tracing::{error, info, span, Level};
