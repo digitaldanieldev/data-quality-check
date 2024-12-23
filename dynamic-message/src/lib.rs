@@ -255,7 +255,7 @@ pub fn populate_dynamic_message(
 }
 
 #[tracing::instrument]
-pub fn serialize_dynamic_message(dynamic_message: &mut DynamicMessage) -> Result<(), String> {
+pub fn serialize_dynamic_message(dynamic_message: &mut DynamicMessage) -> Result<Vec<u8>, String> {
     info!("serialize_dynamic_message");
 
     let options = SerializeOptions::new().skip_default_fields(false);
@@ -275,5 +275,5 @@ pub fn serialize_dynamic_message(dynamic_message: &mut DynamicMessage) -> Result
 
     debug!("Serialized JSON: {:?}", serialized_json);
 
-    Ok(())
+    Ok(serialized_json.into_bytes())
 }

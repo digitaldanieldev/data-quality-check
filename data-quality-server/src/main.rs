@@ -259,6 +259,9 @@ fn init_meter_provider() -> SdkMeterProvider {
 struct ValidationRequest {
     n: Option<String>,
     json: String,
+    validate_field: Option<bool>,
+    field_name: Option<String>,
+    field_value_check: Option<JsonValue>,
 }
 
 async fn validate_json_handler(
@@ -282,7 +285,14 @@ async fn validate_json_handler(
         }
     };
 
-    match validate_json_against_proto(&descriptor_pool, &json_message, &proto_name) {
+    match validate_json_against_proto(
+        &descriptor_pool,
+        &json_message,
+        &proto_name,
+        payload.validate_field,
+        payload.field_name,
+        payload.field_value_check,
+    ) {
         Ok(_) => Ok((StatusCode::OK, "JSON validation successful".to_string())),
         Err(e) => {
             error!("JSON validation failed: {}", e);
@@ -296,6 +306,9 @@ fn validate_json_against_proto(
     descriptor_pool: &DescriptorPool,
     json_message: &str,
     definition_name: &str,
+    validate_field: Option<bool>,
+    field_name: Option<String>,
+    field_value_check: Option<JsonValue>,
 ) -> Result<(), String> {
     let meter = global::meter("json-validation-service");
     let (request_counter, duration_histogram) = create_metrics(&meter);
@@ -340,6 +353,10 @@ fn validate_json_against_proto(
         error_msg
     })?;
 
+    if let Some(true) = validate_field {
+        validate_message_content(&json_value, field_name, field_value_check)?;
+    }
+
     let duration = start_time.elapsed().as_secs_f64();
     duration_histogram.record(
         duration,
@@ -347,4 +364,31 @@ fn validate_json_against_proto(
     );
 
     Ok(())
+}
+
+fn validate_message_content(
+    json_value: &JsonValue,
+    field_name: Option<String>,
+    field_value_check: Option<JsonValue>,
+) -> Result<(), String> {
+    if let (Some(field), Some(expected_value)) = (field_name, field_value_check) {
+        if let Some(actual_value) = json_value.get(&field) {
+            Ok(if actual_value != &expected_value {
+                let error_msg = format!(
+                    "Field '{}' value mismatch: expected {:?}, found {:?}",
+                    field, expected_value, actual_value
+                );
+                error!("{}", error_msg);
+                return Err(error_msg);
+            })
+        } else {
+            let error_msg = format!("Field '{}' not found in the JSON", field);
+            error!("{}", error_msg);
+            return Err(error_msg);
+        }
+    } else {
+        let error_msg = "Field name and value must be provided for validation".to_string();
+        error!("{}", error_msg);
+        return Err(error_msg);
+    }
 }
