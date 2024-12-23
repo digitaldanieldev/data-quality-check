@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use base64;
+use clap::{Arg, Command, Parser};
 use opentelemetry::{global, metrics::Meter, KeyValue};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::runtime::Tokio;
@@ -31,21 +32,45 @@ use dynamic_message::{populate_dynamic_message, serialize_dynamic_message};
 
 type DescriptorMap = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
+#[derive(Clone)]
+struct AppState {
+    descriptor_map: DescriptorMap,
+    enable_metrics: bool,
+}
+
+#[derive(Parser, Debug)]
+#[command(version, about = "Proto Producer", long_about = None)]
+struct Args {
+    /// Run the program in a loop
+    #[arg(long, action(clap::ArgAction::SetTrue))]
+    enable_metrics: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    load_logging_config();
+    let cli_args: Args = Args::parse();
+
+    let _ = load_logging_config();
     load_env_variables();
-    let _meter_provider = init_meter_provider();
+
+    let _meter_provider = if cli_args.enable_metrics {
+        Some(init_meter_provider())
+    } else {
+        None
+    };
 
     let dq_server_port = env::var("DQ_SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
     let port: u64 = dq_server_port.parse()?;
 
-    let descriptor_map = Arc::new(Mutex::new(HashMap::new()));
+    let app_state = AppState {
+        descriptor_map: Arc::new(Mutex::new(HashMap::new())),
+        enable_metrics: cli_args.enable_metrics,
+    };
 
     let app = Router::new()
         .route("/load_descriptor", post(load_descriptor_handler))
         .route("/validate", post(validate_json_handler))
-        .with_state(descriptor_map);
+        .with_state(app_state);
 
     let addr = format!("0.0.0.0:{}", port).parse::<SocketAddr>()?;
     info!(
@@ -142,7 +167,7 @@ struct LoadDescriptorRequest {
 }
 
 async fn load_descriptor_handler(
-    State(descriptor_map): State<DescriptorMap>,
+    State(state): State<AppState>,
     Json(payload): Json<LoadDescriptorRequest>,
 ) -> impl IntoResponse {
     let span = span!(Level::INFO, "load_descriptor_handler");
@@ -164,11 +189,11 @@ async fn load_descriptor_handler(
     };
 
     {
-        let mut descriptor_map = descriptor_map.lock().unwrap();
+        let mut descriptor_map = state.descriptor_map.lock().unwrap();
         descriptor_map.insert(file_name.clone(), file_content.clone());
     }
 
-    let new_descriptor_pool = match rebuild_descriptor_pool(&descriptor_map.lock().unwrap()) {
+    let new_descriptor_pool = match rebuild_descriptor_pool(&state.descriptor_map.lock().unwrap()) {
         Ok(pool) => pool,
         Err(err) => {
             error!("Failed to rebuild descriptor pool: {}", err);
@@ -265,7 +290,7 @@ struct ValidationRequest {
 }
 
 async fn validate_json_handler(
-    State(descriptor_map): State<DescriptorMap>, // Updated type to match the new `DescriptorMap`
+    State(state): State<AppState>,
     Json(payload): Json<ValidationRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let span = span!(Level::INFO, "validate_json_handler");
@@ -275,7 +300,7 @@ async fn validate_json_handler(
     let json_message = payload.json;
 
     let descriptor_pool = {
-        let descriptor_map = descriptor_map.lock().unwrap();
+        let descriptor_map = state.descriptor_map.lock().unwrap();
         match rebuild_descriptor_pool(&descriptor_map) {
             Ok(pool) => pool,
             Err(err) => {
@@ -285,6 +310,8 @@ async fn validate_json_handler(
         }
     };
 
+    let enable_metrics = state.enable_metrics;
+
     match validate_json_against_proto(
         &descriptor_pool,
         &json_message,
@@ -292,6 +319,7 @@ async fn validate_json_handler(
         payload.validate_field,
         payload.field_name,
         payload.field_value_check,
+        enable_metrics,
     ) {
         Ok(_) => Ok((StatusCode::OK, "JSON validation successful".to_string())),
         Err(e) => {
@@ -309,16 +337,25 @@ fn validate_json_against_proto(
     validate_field: Option<bool>,
     field_name: Option<String>,
     field_value_check: Option<JsonValue>,
+    enable_metrics: bool,
 ) -> Result<(), String> {
-    let meter = global::meter("json-validation-service");
-    let (request_counter, duration_histogram) = create_metrics(&meter);
 
-    let start_time = std::time::Instant::now();
+    let cli_args: Args = Args::parse();
 
-    request_counter.add(
-        1,
-        &[KeyValue::new("message_name", definition_name.to_string())],
-    );
+    let start_time: Option<std::time::Instant>;
+
+    if cli_args.enable_metrics {
+        let meter = global::meter("json-validation-service");
+        let (request_counter, duration_histogram) = create_metrics(&meter);
+        start_time = Some(std::time::Instant::now());
+    
+        request_counter.add(
+            1,
+            &[KeyValue::new("message_name", definition_name.to_string())],
+        );
+    } else {
+        start_time = None;
+    }
 
     info!("Starting JSON validation for proto: {}", definition_name);
 
@@ -357,14 +394,19 @@ fn validate_json_against_proto(
         validate_message_content(&json_value, field_name, field_value_check)?;
     }
 
-    let duration = start_time.elapsed().as_secs_f64();
-    duration_histogram.record(
-        duration,
-        &[KeyValue::new("message_name", definition_name.to_string())],
-    );
+    if let Some(start_time) = start_time {
+        let duration = start_time.elapsed().as_secs_f64();
+        let meter = global::meter("json-validation-service");
+        let (_, duration_histogram) = create_metrics(&meter);
+        duration_histogram.record(
+            duration,
+            &[KeyValue::new("message_name", definition_name.to_string())],
+        );
+    }
 
     Ok(())
 }
+
 
 fn validate_message_content(
     json_value: &JsonValue,

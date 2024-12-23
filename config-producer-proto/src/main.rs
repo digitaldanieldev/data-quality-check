@@ -1,5 +1,5 @@
 use base64;
-use clap::{Arg, Command};
+use clap::{Arg, Command, Parser};
 use prost::Message;
 use prost_types::FileDescriptorSet;
 use reqwest::{Client, StatusCode};
@@ -20,28 +20,22 @@ use walkdir::WalkDir;
 
 use data_quality_settings::{load_env_variables, load_logging_config};
 
+#[derive(Parser, Debug)]
+#[command(version, about = "Proto Producer", long_about = None)]
+struct Args {
+    /// Run the program in a loop
+    #[arg(long, action(clap::ArgAction::SetTrue))]
+    loop_mode: bool,
+
+    /// Interval in seconds for each iteration if loop mode is enabled
+    #[arg(long, default_value = "10", value_parser = clap::value_parser!(u64))]
+    interval: u64,
+}
 
 #[tokio::main]
 async fn main() -> notify::Result<()> {
-    let matches = Command::new("Proto Producer")
-        .about("Processes and sends protobuf files to a server")
-        .arg(
-            Arg::new("loop")
-                .long("loop")
-                .action(clap::ArgAction::SetTrue)
-                .help("Run the program in a loop"),
-        )
-        .arg(
-            Arg::new("interval")
-                .long("interval")
-                .value_parser(clap::value_parser!(u64))
-                .default_value("10")
-                .help("Interval in seconds for each iteration if loop mode is enabled"),
-        )
-        .get_matches();
 
-    let should_loop = matches.get_one::<bool>("loop").copied().unwrap_or(false);
-    let interval_seconds = *matches.get_one::<u64>("interval").unwrap();
+    let cli_args = Args::parse();
 
     loop {
         let _ = load_logging_config();
@@ -88,14 +82,16 @@ async fn main() -> notify::Result<()> {
             }
         }
 
-        if !should_loop {
+        if !cli_args.loop_mode {
             break;
         }
-        sleep(Duration::from_secs(interval_seconds)).await;
+
+        sleep(Duration::from_secs(cli_args.interval)).await;
     }
 
     Ok(())
 }
+
 
 
 

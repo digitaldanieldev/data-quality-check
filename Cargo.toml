@@ -13,9 +13,9 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-axum = {version = "0.7.9", features = ["multipart"]}
+axum = {version = "0.7.9", features = ["macros","multipart"]}
 base64 = "0.22.1"
-clap = "4.5.23"
+clap = { version = "4.5.23", features = ["derive"] }
 color-eyre = "0.6.3"
 dotenvy = "0.15.7"
 notify = "7.0.0"
