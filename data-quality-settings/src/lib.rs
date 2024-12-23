@@ -11,34 +11,8 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
-
-#[tracing::instrument]
-pub fn load_logging_config() -> Result<(), Report> {
-
-    info!("load_logging_config");
-
-    color_eyre::install()?;
-
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(Level::DEBUG)
-        .with_span_events(FmtSpan::NONE)
-        .event_format(
-            fmt::format()
-                // .pretty()
-                .with_target(false)
-                .with_level(true)
-                .with_source_location(false),
-        )
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber)?;
-
-    Ok(())
-}
-
 #[tracing::instrument]
 pub fn load_env_variables() {
-
     info!("load_env_variables");
 
     match env::current_exe() {
@@ -77,4 +51,27 @@ pub fn load_env_variables() {
     }
 
     debug!("Finished loading environment variables.");
+}
+
+#[tracing::instrument]
+pub fn load_logging_config() -> Result<(), Report> {
+    info!("load_logging_config");
+
+    color_eyre::install()?;
+
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
+        .with_span_events(FmtSpan::NONE)
+        .event_format(
+            fmt::format()
+                // .pretty()
+                .with_target(false)
+                .with_level(true)
+                .with_source_location(false),
+        )
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)?;
+
+    Ok(())
 }

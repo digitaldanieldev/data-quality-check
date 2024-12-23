@@ -99,7 +99,6 @@ async fn main() -> notify::Result<()> {
 
 
 
-// Serializing the FileDescriptorSet into a byte vector
 #[tracing::instrument]
 fn serialize_file_descriptor_set(fd_set: &FileDescriptorSet) -> Vec<u8> {
     info!("serialize_file_descriptor_set");
@@ -127,15 +126,14 @@ async fn send_to_axum_server(
 
     let client = Client::new();
 
-    // Encode the file content in base64
     let payload = LoadDescriptorRequest {
         file_name: file_name.to_string(),
-        file_content: base64::encode(data), // Encoding the content to base64 for safe transmission
+        file_content: base64::encode(data),
     };
 
     let response = client
         .post(url)
-        .json(&payload) // Serialize the payload as JSON
+        .json(&payload) 
         .send()
         .await?;
 
@@ -154,7 +152,6 @@ async fn send_to_axum_server(
     }
 }
 
-// Loading protobuf files
 async fn load_proto_files(
     proto_schema_input_dir: &str,
     definitions: &mut HashMap<String, (Vec<u8>, u64)>,
@@ -228,7 +225,6 @@ fn proto_files_in_directory(
         .collect()
 }
 
-// Processing the proto files and generating FileDescriptorSet
 async fn process_proto_file(
     file: &Path,
     proto_output_dir: &Path,
@@ -242,16 +238,12 @@ async fn process_proto_file(
     let output_file = generate_output_file(file, proto_output_dir);
     compile_with_protoc(protoc_path, file, &output_file).await?;
 
-    // Read the output file asynchronously
     let file_content = fs::read(&output_file).await?;
 
-    // Extract the file name
     let file_name = file.file_name().unwrap().to_string_lossy().into_owned();
 
-    // Get the modified time of the file
     let modified_time = get_modified_time(file).await?;
 
-    // Check if the file content has changed
     if definitions
         .entry(file_name.clone())
         .or_insert((file_content.clone(), modified_time))
@@ -265,7 +257,6 @@ async fn process_proto_file(
     Ok(())
 }
 
-// Helper function to get the modified time of a file asynchronously
 async fn get_modified_time(file: &Path) -> Result<u64, Box<dyn std::error::Error>> {
     let span = span!(Level::INFO, "get_modified_time");
     let _enter = span.enter();
@@ -278,7 +269,6 @@ async fn get_modified_time(file: &Path) -> Result<u64, Box<dyn std::error::Error
     Ok(modified_time)
 }
 
-// Generate the output file path
 #[tracing::instrument]
 fn generate_output_file(file: &Path, proto_output_dir: &Path) -> PathBuf {
     info!("generate_output_file");
@@ -289,7 +279,6 @@ fn generate_output_file(file: &Path, proto_output_dir: &Path) -> PathBuf {
     ))
 }
 
-// Function to compile with protoc asynchronously
 async fn compile_with_protoc(
     protoc_path: &str,
     file: &Path,
