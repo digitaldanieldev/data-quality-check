@@ -5,8 +5,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true }
+dotenvy = { workspace = true }
 notify = { workspace = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true }

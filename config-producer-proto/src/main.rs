@@ -1,5 +1,7 @@
+use anyhow::Result;
 use base64;
 use clap::{Arg, Command, Parser};
+use dotenvy;
 use prost::Message;
 use prost_types::FileDescriptorSet;
 use reqwest::{Client, StatusCode};
@@ -33,8 +35,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> notify::Result<()> {
-
+async fn main() -> Result<()> {
     let cli_args = Args::parse();
 
     loop {
@@ -44,11 +45,10 @@ async fn main() -> notify::Result<()> {
         let span = span!(Level::INFO, "proto producer");
         let _enter = span.enter();
 
-        let proto_schema_input_dir = env::var("PROTO_SCHEMA_INPUT_DIR").unwrap();
-        let dq_server_ip = env::var("DQ_SERVER_IP").unwrap_or_default();
-        let dq_server_port = env::var("DQ_SERVER_PORT").unwrap_or_default();
-
-        let dq_server_address = format!("{}:{}", dq_server_ip, dq_server_port);
+        let proto_schema_input_dir = dotenvy::var("PROTO_SCHEMA_INPUT_DIR")?;
+        let server_ip = dotenvy::var("SERVER_IP")?;
+        let server_port = dotenvy::var("SERVER_PORT")?;
+        let server_address = format!("{}:{}", server_ip, server_port);
 
         let protobuf_definitions: Arc<TokioMutex<HashMap<String, (Vec<u8>, u64)>>> =
             Arc::new(TokioMutex::new(HashMap::new()));
@@ -58,9 +58,14 @@ async fn main() -> notify::Result<()> {
         {
             let mut definitions = protobuf_definitions.lock().await;
             let mut timestamps = file_timestamps.lock().await;
-            load_proto_files(&proto_schema_input_dir, &mut definitions, &mut timestamps)
-                .await
-                .unwrap();
+
+            match load_proto_files(&proto_schema_input_dir, &mut definitions, &mut timestamps).await {
+                Ok(_) => info!("Successfully loaded proto files."),
+                Err(err) => {
+                    eprintln!("Error loading proto files: {}", err);
+                    continue;
+                }
+            }
         }
 
         for (file_name, (file_content, _)) in &*protobuf_definitions.lock().await {
@@ -69,16 +74,22 @@ async fn main() -> notify::Result<()> {
                 file_name
             );
 
-            let fd_set: FileDescriptorSet = prost::Message::decode(file_content.as_slice())
-                .expect("Failed to decode FileDescriptorSet");
-            let serialized_fd_set = serialize_file_descriptor_set(&fd_set);
+            let fd_set_result = prost::Message::decode(file_content.as_slice());
+            let fd_set = match fd_set_result {
+                Ok(fd_set) => fd_set,
+                Err(err) => {
+                    eprintln!("Failed to decode FileDescriptorSet for {}: {}", file_name, err);
+                    continue; 
+                }
+            };
 
-            let descriptor_server_url = format!("http://{}/load_descriptor", dq_server_address);
+            let serialized_fd_set = serialize_file_descriptor_set(&fd_set);
+            let descriptor_server_url = format!("http://{}/load_descriptor", server_address);
             info!("descriptor_server_url: {}", &descriptor_server_url);
 
             match send_to_axum_server(&descriptor_server_url, &file_name, &serialized_fd_set).await {
                 Ok(success_message) => info!("{}", success_message),
-                Err(err) => eprintln!("Error sending FileDescriptorSet: {}", err),
+                Err(err) => eprintln!("Error sending FileDescriptorSet for {}: {}", file_name, err),
             }
         }
 
@@ -91,8 +102,6 @@ async fn main() -> notify::Result<()> {
 
     Ok(())
 }
-
-
 
 
 #[tracing::instrument]
