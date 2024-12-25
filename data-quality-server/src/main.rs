@@ -12,9 +12,7 @@ use opentelemetry::{global, metrics::Meter, KeyValue};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::Resource;
-use prost_reflect::{
-    DescriptorPool, DynamicMessage,
-};
+use prost_reflect::{DescriptorPool, DynamicMessage};
 use prost_types::FileDescriptorSet;
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
@@ -26,6 +24,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::net::TcpListener;
+use tokio::runtime::Builder;
 use tracing::{debug, error, info, span, Level};
 
 use data_quality_settings::{load_env_variables, load_logging_config};
@@ -64,76 +63,91 @@ struct Args {
     /// Optional JSON string to validate json
     #[clap(short, long)]
     json: Option<String>,
+
+    /// Number of worker threads
+    #[clap(long, default_value_t = 2)]
+    worker_threads: usize,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+fn main() -> Result<(), anyhow::Error> {
+
     let cli_args: Args = Args::parse();
 
-    // If `json` argument is provided, validate JSON
-    if let Some(json_string) = cli_args.json {
-        match validate_json(
-            None,
-            &json_string,
-            None,
-            Some(false),
-            None,
-            None,
-            cli_args.enable_metrics,
-        ) {
-            Ok(_) => {
-                println!("JSON OK");
-                return Ok(());
-            }
-            Err(e) => {
-                error!("JSON validation failed: {}", e);
-                return Err(anyhow!("Validation failed for the provided JSON"));
+    // Dynamically configure the Tokio runtime with the specified number of worker threads
+    let runtime = Builder::new_multi_thread()
+        .worker_threads(cli_args.worker_threads)
+        .enable_all()
+        .build()?;
+
+    // Enter the Tokio runtime
+    runtime.block_on(async {
+        // Rest of your code will go here as before...
+
+        // If `json` argument is provided, validate JSON
+        if let Some(json_string) = cli_args.json {
+            match validate_json(
+                None,
+                &json_string,
+                None,
+                Some(false),
+                None,
+                None,
+                cli_args.enable_metrics,
+            ) {
+                Ok(_) => {
+                    println!("JSON OK");
+                    return Ok(());
+                }
+                Err(e) => {
+                    error!("JSON validation failed: {}", e);
+                    return Err(anyhow!("Validation failed for the provided JSON"));
+                }
             }
         }
-    }
 
-    let _ = load_logging_config();
-    load_env_variables();
+        let _ = load_logging_config();
+        load_env_variables();
 
-    let _meter_provider = if cli_args.enable_metrics {
-        Some(init_meter_provider())
-    } else {
-        None
-    };
-    let server_ip = env::var("SERVER_IP").context("SERVER_IP environment variable missing")?;
-    let server_port =
-        env::var("SERVER_PORT").context("SERVER_PORT environment variable missing")?;
+        let _meter_provider = if cli_args.enable_metrics {
+            Some(init_meter_provider())
+        } else {
+            None
+        };
+        let server_ip = env::var("SERVER_IP").context("SERVER_IP environment variable missing")?;
+        let server_port =
+            env::var("SERVER_PORT").context("SERVER_PORT environment variable missing")?;
 
-    let server_address = format!("{}:{}", server_ip, server_port);
+        let server_address = format!("{}:{}", server_ip, server_port);
 
-    let app_state = AppState {
-        descriptor_map: Arc::new(Mutex::new(HashMap::new())),
-        enable_metrics: cli_args.enable_metrics,
-    };
+        let app_state = AppState {
+            descriptor_map: Arc::new(Mutex::new(HashMap::new())),
+            enable_metrics: cli_args.enable_metrics,
+        };
 
-    let app = Router::new()
-        .route("/load_descriptor", post(load_descriptor_handler))
-        .route("/validate", post(validate_json_handler))
-        .with_state(app_state);
+        let app = Router::new()
+            .route("/load_descriptor", post(load_descriptor_handler))
+            .route("/validate", post(validate_json_handler))
+            .with_state(app_state);
 
-    let tcp_listener_address: SocketAddr = format!("{}", server_address)
-        .parse::<SocketAddr>()
-        .map_err(|e| anyhow::anyhow!("Failed to parse SocketAddr: {}", e))?; // Use anyhow for error handling
+        let tcp_listener_address: SocketAddr = format!("{}", server_address)
+            .parse::<SocketAddr>()
+            .map_err(|e| anyhow::anyhow!("Failed to parse SocketAddr: {}", e))?; // Use anyhow for error handling
 
-    info!(
-        "Listening for descriptor loading and JSON validation on {:?}",
-        tcp_listener_address
-    );
+        info!(
+            "Listening for descriptor loading and JSON validation on {:?}",
+            tcp_listener_address
+        );
 
-    let listener = TcpListener::bind(tcp_listener_address)
-        .await
-        .context("Failed to bind TcpListener")?;
+        let listener = TcpListener::bind(tcp_listener_address)
+            .await
+            .context("Failed to bind TcpListener")?;
 
-    info!("Starting server on port {}", server_port);
+        info!("Starting server on port {}", server_port);
 
-    axum::serve(listener, app.into_make_service()).await?;
+        axum::serve(listener, app.into_make_service()).await?;
 
-    Ok(())
+        Ok(())
+    })
 }
 
 ////////////////
@@ -199,7 +213,6 @@ fn validate_json(
     field_value_check: Option<JsonValue>,
     enable_metrics: bool,
 ) -> Result<(), anyhow::Error> {
-
     info!("Starting JSON validation process");
 
     // Metrics setup (if enabled)
@@ -211,62 +224,70 @@ fn validate_json(
 
     let start_time = meter.as_ref().map(|_| Instant::now());
 
-    // Parse the JSON first, regardless of whether a definition name is provided
+    // Parse the JSON first
     let json_value: JsonValue = serde_json::from_str(json_message).map_err(|e| {
         let error_msg = format!("Failed to parse JSON: {:?}", e);
         error!("{}", error_msg);
         anyhow::anyhow!(error_msg)
     })?;
 
-    // Record JSON parsing metrics if no definition name is provided
+    // Determine the message name for metrics
+    let message_name = definition_name.unwrap_or("only_json").to_string();
+
+    // Metrics: Record request count
     if let Some(ref meter) = meter {
         let (request_counter, _) = create_metrics(meter);
-        if definition_name.is_none() {
-            request_counter.add(1, &[KeyValue::new("message_name", "only_json")]);
-        }
+        request_counter.add(
+            1,
+            &[
+                KeyValue::new("message_name", message_name.clone()),
+                KeyValue::new(
+                    "field_check",
+                    if field_check.unwrap_or(false) {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    },
+                ),
+            ],
+        );
     }
 
-    // Track the duration for "only_json" if no definition name
-    if definition_name.is_none() {
-        if let Some(ref meter) = meter {
+    // Metrics: Track duration
+    let record_duration = |message_name: &str, field_check_enabled: bool| {
+        if let (Some(start_time), Some(ref meter)) = (start_time, &meter) {
+            let duration = start_time.elapsed().as_micros();
             let (_, duration_histogram) = create_metrics(meter);
-            if let Some(start_time) = start_time {
-                let duration = start_time.elapsed().as_micros();
-                let formatted_duration = format!("{:.6}", duration);
-                duration_histogram.record(
-                    formatted_duration.parse().unwrap_or(0.0),
-                    &[KeyValue::new("message_name", "only_json")],
-                );
-            }
-        }
-    }
+            let formatted_duration = format!("{:.6}", duration);
 
-    // If a definition name is provided, proceed with protobuf-specific validation
+            duration_histogram.record(
+                formatted_duration.parse().unwrap_or(0.0),
+                &[
+                    KeyValue::new("message_name", message_name.to_string()),
+                    KeyValue::new(
+                        "field_check",
+                        if field_check_enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        },
+                    ),
+                ],
+            );
+        }
+    };
+
+    // Handle JSON validation with or without a definition name
     if let Some(definition_name) = definition_name {
-        if let Some(ref meter) = meter {
-            if let Some(true) = field_check {
-                let (field_check_counter, _) = create_metrics(meter);
-                field_check_counter.add(
-                    1,
-                    &[
-                        KeyValue::new("message_name", definition_name.to_string()),
-                        KeyValue::new("field_check", "enabled"),
-                    ],
-                );
-            } else {
-                let (request_counter, _) = create_metrics(meter);
-                request_counter.add(
-                    1,
-                    &[KeyValue::new("message_name", definition_name.to_string())],
-                );
-            }
-        }
-
         info!("Starting JSON validation for proto: {}", definition_name);
 
         let message_descriptor = descriptor_pool
-            .expect("Descriptor pool is None") // This will panic if descriptor_pool is None
-            .get_message_by_name(definition_name) // Now you can call get_message_by_name directly on &DescriptorPool
+            .ok_or_else(|| {
+                let error_msg = "Descriptor pool is None".to_string();
+                error!("{}", error_msg);
+                anyhow::anyhow!(error_msg)
+            })?
+            .get_message_by_name(definition_name)
             .ok_or_else(|| {
                 let error_msg = format!("Message '{}' not found in pool", definition_name);
                 error!("{}", error_msg);
@@ -275,7 +296,7 @@ fn validate_json(
 
         info!("Found message descriptor: {:?}", message_descriptor);
 
-        // Populate the dynamic message
+        // Populate and serialize the dynamic message
         let mut dynamic_message = DynamicMessage::new(message_descriptor.clone());
         populate_dynamic_message(&mut dynamic_message, &message_descriptor, &json_value).map_err(
             |e| {
@@ -285,7 +306,6 @@ fn validate_json(
             },
         )?;
 
-        // Serialize the dynamic message
         serialize_dynamic_message(&mut dynamic_message).map_err(|e| {
             let error_msg = format!("Failed to serialize dynamic message: {}", e);
             error!("{}", error_msg);
@@ -293,65 +313,36 @@ fn validate_json(
         })?;
 
         // Perform field validation if enabled
-        if let Some(true) = field_check {
-            validate_json_message_content(&json_value, field_name, field_value_check).map_err(|e| {
-                let error_msg = format!("Failed to validate message content: {}", e);
-                error!("{}", error_msg);
-                anyhow::anyhow!(error_msg)
-            })?;
+        if field_check.unwrap_or(false) {
+            validate_json_message_content(&json_value, field_name, field_value_check).map_err(
+                |e| {
+                    let error_msg = format!("Failed to validate message content: {}", e);
+                    error!("{}", error_msg);
+                    anyhow::anyhow!(error_msg)
+                },
+            )?;
         }
 
-        // Track the duration if applicable
-        if let Some(start_time) = start_time {
-            let duration = start_time.elapsed().as_micros();
-            if let Some(ref meter) = meter {
-                let (_, duration_histogram) = create_metrics(meter);
-                let formatted_duration = format!("{:.6}", duration);
-                duration_histogram.record(
-                    formatted_duration.parse().unwrap_or(0.0),
-                    &[KeyValue::new("message_name", definition_name.to_string())],
-                );
-            }
-        }
-
-        Ok(())
+        record_duration(&message_name, field_check.unwrap_or(false));
     } else {
-        // No definition name provided; just validate the JSON
+        // Handle "only_json" case
         info!("No definition_name provided. Only parsed JSON successfully.");
 
-        if let Some(true) = field_check {
-            if let Some(ref meter) = meter {
-                let (field_check_counter, _) = create_metrics(meter);
-                field_check_counter.add(
-                    1,
-                    &[KeyValue::new("message_name", "only_json"), KeyValue::new("field_check", "enabled")],
-                );
-            }
-
-            validate_json_message_content(&json_value, field_name, field_value_check).map_err(|e| {
-                let error_msg = format!("Failed to validate message content: {}", e);
-                error!("{}", error_msg);
-                anyhow::anyhow!(error_msg)
-            })?;
-
-            if let Some(start_time) = start_time {
-                let duration = start_time.elapsed().as_micros();
-                if let Some(ref meter) = meter {
-                    let (_, duration_histogram) = create_metrics(meter);
-                    let formatted_duration = format!("{:.6}", duration);
-                    duration_histogram.record(
-                        formatted_duration.parse().unwrap_or(0.0),
-                        &[KeyValue::new("message_name", "only_json"), KeyValue::new("field_check", "enabled")],
-                    );
-                }
-            }
+        if field_check.unwrap_or(false) {
+            validate_json_message_content(&json_value, field_name, field_value_check).map_err(
+                |e| {
+                    let error_msg = format!("Failed to validate message content: {}", e);
+                    error!("{}", error_msg);
+                    anyhow::anyhow!(error_msg)
+                },
+            )?;
         }
 
-        Ok(())
+        record_duration("only_json", field_check.unwrap_or(false));
     }
+
+    Ok(())
 }
-
-
 
 fn validate_json_message_content(
     json_value: &JsonValue,

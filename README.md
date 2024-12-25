@@ -2,6 +2,8 @@
 
 ## Enable metrics
 ./data-quality-server --enable-metrics
+./data-quality-server --worker-threads 4 --enable-metrics
+
 
 # Config-producer-proto
 
