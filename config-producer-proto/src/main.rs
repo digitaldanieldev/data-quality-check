@@ -1,6 +1,6 @@
 use anyhow::Result;
 use base64;
-use clap::{Arg, Command, Parser};
+use clap::Parser;
 use dotenvy;
 use prost::Message;
 use prost_types::FileDescriptorSet;
