@@ -20,7 +20,7 @@ use tokio::time::{sleep, Duration};
 use tracing::{error, info, span, Level};
 use walkdir::WalkDir;
 
-use data_quality_settings::{load_env_variables, load_logging_config};
+use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Proto Producer", long_about = None)]
@@ -40,23 +40,14 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    
     let cli_args = Args::parse();
-
-    // If `log_level` argument is provided, set level
-    let log_level = match cli_args.log_level.to_lowercase().as_str() {
-        "error" => Level::ERROR,
-        "warn" => Level::WARN,
-        "info" => Level::INFO,
-        "debug" => Level::DEBUG,
-        "trace" => Level::TRACE,
-        _ => Level::INFO,
-    };
+    let log_level = parse_log_level(&cli_args.log_level)?;
+    let _ = load_logging_config(log_level);
+    load_env_variables();
 
     loop {
         
-        let _ = load_logging_config(log_level);
-        load_env_variables();
-
         let span = span!(Level::INFO, "proto producer");
         let _enter = span.enter();
 

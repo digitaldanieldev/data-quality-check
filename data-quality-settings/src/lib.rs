@@ -75,6 +75,21 @@ pub fn load_logging_config(log_level: Level) -> Result<(), Report> {
     Ok(())
 }
 
+use anyhow::{Result, Context};
+
+#[tracing::instrument]
+pub fn parse_log_level(log_level: &str) -> Result<Level> {
+    match log_level.to_lowercase().as_str() {
+        "error" => Ok(Level::ERROR),
+        "warn" => Ok(Level::WARN),
+        "info" => Ok(Level::INFO),
+        "debug" => Ok(Level::DEBUG),
+        "trace" => Ok(Level::TRACE),
+        _ => Ok(Level::INFO),
+    }
+}
+
+
 // #[tracing::instrument]
 // pub fn load_logging_config() -> Result<(), Report> {
 //     info!("load_logging_config");

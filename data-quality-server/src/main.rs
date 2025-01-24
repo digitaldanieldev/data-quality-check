@@ -7,7 +7,7 @@ use axum::{
     Router,
 };
 use base64;
-use clap::{Parser, ArgAction};
+use clap::{Parser};
 use opentelemetry::{global, metrics::Meter, KeyValue};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::runtime::Tokio;
@@ -27,7 +27,7 @@ use tokio::net::TcpListener;
 use tokio::runtime::Builder;
 use tracing::{debug, error, info, span, Level};
 
-use data_quality_settings::{load_env_variables, load_logging_config};
+use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
 use dynamic_message::{populate_dynamic_message, serialize_dynamic_message};
 
 type DescriptorMap = Arc<Mutex<HashMap<String, Vec<u8>>>>;
@@ -108,16 +108,7 @@ fn main() -> Result<(), anyhow::Error> {
             }
         }
 
-        // If `log_level` argument is provided, set level
-        let log_level = match cli_args.log_level.to_lowercase().as_str() {
-            "error" => Level::ERROR,
-            "warn" => Level::WARN,
-            "info" => Level::INFO,
-            "debug" => Level::DEBUG,
-            "trace" => Level::TRACE,
-            _ => Level::INFO,
-        };
-
+        let log_level = parse_log_level(&cli_args.log_level)?;
         let _ = load_logging_config(log_level);
         load_env_variables();
 
