@@ -7,7 +7,7 @@ use axum::{
     Router,
 };
 use base64;
-use clap::{Parser};
+use clap::Parser;
 use opentelemetry::{global, metrics::Meter, KeyValue};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::runtime::Tokio;
@@ -74,7 +74,6 @@ struct Args {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-
     let cli_args: Args = Args::parse();
 
     // Dynamically configure the Tokio runtime with the specified number of worker threads
@@ -85,7 +84,6 @@ fn main() -> Result<(), anyhow::Error> {
 
     // Enter the Tokio runtime
     runtime.block_on(async {
-
         // If `json` argument is provided, validate JSON
         if let Some(json_string) = cli_args.json {
             match validate_json(

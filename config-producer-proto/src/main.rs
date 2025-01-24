@@ -12,7 +12,8 @@ use std::{
     error::Error,
     ffi::OsStr,
     path::{Path, PathBuf},
-    process::Command as StdCommand, sync::Arc,
+    process::Command as StdCommand,
+    sync::Arc,
 };
 use tokio::fs;
 use tokio::sync::Mutex as TokioMutex;
@@ -40,14 +41,12 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    
     let cli_args = Args::parse();
     let log_level = parse_log_level(&cli_args.log_level)?;
     let _ = load_logging_config(log_level);
     load_env_variables();
 
     loop {
-        
         let span = span!(Level::INFO, "proto producer");
         let _enter = span.enter();
 
@@ -65,7 +64,8 @@ async fn main() -> Result<()> {
             let mut definitions = protobuf_definitions.lock().await;
             let mut timestamps = file_timestamps.lock().await;
 
-            match load_proto_files(&proto_schema_input_dir, &mut definitions, &mut timestamps).await {
+            match load_proto_files(&proto_schema_input_dir, &mut definitions, &mut timestamps).await
+            {
                 Ok(_) => info!("Successfully loaded proto files."),
                 Err(err) => {
                     eprintln!("Error loading proto files: {}", err);
@@ -84,8 +84,11 @@ async fn main() -> Result<()> {
             let fd_set = match fd_set_result {
                 Ok(fd_set) => fd_set,
                 Err(err) => {
-                    eprintln!("Failed to decode FileDescriptorSet for {}: {}", file_name, err);
-                    continue; 
+                    eprintln!(
+                        "Failed to decode FileDescriptorSet for {}: {}",
+                        file_name, err
+                    );
+                    continue;
                 }
             };
 
@@ -93,7 +96,8 @@ async fn main() -> Result<()> {
             let descriptor_server_url = format!("http://{}/load_descriptor", server_address);
             info!("descriptor_server_url: {}", &descriptor_server_url);
 
-            match send_to_axum_server(&descriptor_server_url, &file_name, &serialized_fd_set).await {
+            match send_to_axum_server(&descriptor_server_url, &file_name, &serialized_fd_set).await
+            {
                 Ok(success_message) => info!("{}", success_message),
                 Err(err) => eprintln!("Error sending FileDescriptorSet for {}: {}", file_name, err),
             }
@@ -108,7 +112,6 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
 
 #[tracing::instrument]
 fn serialize_file_descriptor_set(fd_set: &FileDescriptorSet) -> Vec<u8> {
@@ -142,11 +145,7 @@ async fn send_to_axum_server(
         file_content: base64::encode(data),
     };
 
-    let response = client
-        .post(url)
-        .json(&payload) 
-        .send()
-        .await?;
+    let response = client.post(url).json(&payload).send().await?;
 
     if response.status() == StatusCode::OK {
         let success_message = format!("Successfully sent FileDescriptorSet for: {}", file_name);
@@ -159,7 +158,10 @@ async fn send_to_axum_server(
             response.status()
         );
         error!("{}", error_message);
-        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_message)))
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            error_message,
+        )))
     }
 }
 
