@@ -54,17 +54,16 @@ pub fn load_env_variables() {
 }
 
 #[tracing::instrument]
-pub fn load_logging_config() -> Result<(), Report> {
-    info!("load_logging_config");
+pub fn load_logging_config(log_level: Level) -> Result<(), Report> {
+    tracing::info!("load_logging_config");
 
     color_eyre::install()?;
 
     let subscriber = tracing_subscriber::fmt()
-        .with_max_level(Level::DEBUG)
-        .with_span_events(FmtSpan::NONE)
+        .with_max_level(log_level)
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
         .event_format(
-            fmt::format()
-                // .pretty()
+            tracing_subscriber::fmt::format()
                 .with_target(false)
                 .with_level(true)
                 .with_source_location(false),
@@ -75,3 +74,27 @@ pub fn load_logging_config() -> Result<(), Report> {
 
     Ok(())
 }
+
+// #[tracing::instrument]
+// pub fn load_logging_config() -> Result<(), Report> {
+//     info!("load_logging_config");
+
+//     color_eyre::install()?;
+
+//     let subscriber = tracing_subscriber::fmt()
+//         // .with_max_level(Level::DEBUG)
+//         .with_max_level(Level::INFO)
+//         .with_span_events(FmtSpan::NONE)
+//         .event_format(
+//             fmt::format()
+//                 // .pretty()
+//                 .with_target(false)
+//                 .with_level(true)
+//                 .with_source_location(false),
+//         )
+//         .finish();
+
+//     tracing::subscriber::set_global_default(subscriber)?;
+
+//     Ok(())
+// }

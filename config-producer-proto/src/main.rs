@@ -32,14 +32,29 @@ struct Args {
     /// Interval in seconds for each iteration if loop mode is enabled
     #[arg(long, default_value = "10", value_parser = clap::value_parser!(u64))]
     interval: u64,
+
+    /// Logging level
+    #[clap(short, long, default_value = "info")]
+    log_level: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli_args = Args::parse();
 
+    // If `log_level` argument is provided, set level
+    let log_level = match cli_args.log_level.to_lowercase().as_str() {
+        "error" => Level::ERROR,
+        "warn" => Level::WARN,
+        "info" => Level::INFO,
+        "debug" => Level::DEBUG,
+        "trace" => Level::TRACE,
+        _ => Level::INFO,
+    };
+
     loop {
-        let _ = load_logging_config();
+        
+        let _ = load_logging_config(log_level);
         load_env_variables();
 
         let span = span!(Level::INFO, "proto producer");

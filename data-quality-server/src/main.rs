@@ -7,7 +7,7 @@ use axum::{
     Router,
 };
 use base64;
-use clap::Parser;
+use clap::{Parser, ArgAction};
 use opentelemetry::{global, metrics::Meter, KeyValue};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::runtime::Tokio;
@@ -67,6 +67,10 @@ struct Args {
     /// Number of worker threads
     #[clap(long, default_value_t = 2)]
     worker_threads: usize,
+
+    /// Logging level
+    #[clap(short, long, default_value = "info")]
+    log_level: String,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -81,7 +85,6 @@ fn main() -> Result<(), anyhow::Error> {
 
     // Enter the Tokio runtime
     runtime.block_on(async {
-        // Rest of your code will go here as before...
 
         // If `json` argument is provided, validate JSON
         if let Some(json_string) = cli_args.json {
@@ -105,7 +108,17 @@ fn main() -> Result<(), anyhow::Error> {
             }
         }
 
-        let _ = load_logging_config();
+        // If `log_level` argument is provided, set level
+        let log_level = match cli_args.log_level.to_lowercase().as_str() {
+            "error" => Level::ERROR,
+            "warn" => Level::WARN,
+            "info" => Level::INFO,
+            "debug" => Level::DEBUG,
+            "trace" => Level::TRACE,
+            _ => Level::INFO,
+        };
+
+        let _ = load_logging_config(log_level);
         load_env_variables();
 
         let _meter_provider = if cli_args.enable_metrics {
