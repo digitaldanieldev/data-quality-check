@@ -47,7 +47,68 @@ curl -X POST http://localhost:8080/validate \
   -d '{
     "protobuf": "MyMessage", 
     "json": "{\"key1\": \"example_value\", \"key2\": 42, \"key3\": true}", 
+    "json_escaped": true,
     "field_check": true,
     "field_name": "key2",
     "field_value_check": 42  }'
+
+curl -X POST http://localhost:8080/validate   -H "Content-Type: application/json"   -d '{
+    "protobuf": "MyMessage", 
+    "json": {"key1": "example_value", "key2": 42, "key3": true}, 
+    "json_escaped": false,
+    "field_check": true,
+    "field_name": "key2",
+    "field_value_check": 42
+  }'
+
+curl -X POST http://localhost:8080/validate \
+    -H "Content-Type: application/json" \
+    -d '{
+        "protobuf": "MyMessage",
+        "json": '"$(cat data.json)"',
+        "json_escaped": false,
+        "field_check": true,
+        "field_name": "key2",
+        "field_value_check": 42
+    }'
+
+with data.json:
+{
+    "key1": "example_value",
+    "key2": 42,
+    "key3": true
+}
+
+## wget
+wget --quiet \
+     --method=POST \
+     --header="Content-Type: application/json" \
+     --body-data='{
+         "protobuf": "MyMessage",
+         "json": {
+             "key1": "example_value",
+             "key2": 42,
+             "key3": true
+         },
+         "json_escaped": false,
+         "field_check": true,
+         "field_name": "key2",
+         "field_value_check": 42
+     }' \
+     -O - http://localhost:8080/validate
+
+## httpie
+http POST http://localhost:8080/validate \
+    Content-Type:application/json \
+    protobuf="MyMessage" \
+    json:='{
+        "key1": "example_value",
+        "key2": 42,
+        "key3": true
+    }' \
+    json_escaped:=false \
+    field_check:=true \
+    field_name="key2" \
+    field_value_check:=42
+
 

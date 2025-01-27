@@ -9,7 +9,7 @@ criterion = { workspace = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true }
 prost-types = { workspace = true }
-regex = "1.11.1"
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

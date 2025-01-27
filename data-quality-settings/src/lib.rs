@@ -4,11 +4,12 @@ use anyhow::Result;
 use color_eyre::Report;
 use dotenvy::from_filename;
 use std::env;
-use tracing::{debug, error, info, span, Level};
+use tracing::{Level, info, error, warn, debug, trace};
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
     EnvFilter,
 };
+use tracing_subscriber::FmtSubscriber;
 
 #[tracing::instrument]
 pub fn load_env_variables() {
@@ -58,15 +59,8 @@ pub fn load_logging_config(log_level: Level) -> Result<(), Report> {
 
     color_eyre::install()?;
 
-    let subscriber = tracing_subscriber::fmt()
+    let subscriber = FmtSubscriber::builder()
         .with_max_level(log_level)
-        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
-        .event_format(
-            tracing_subscriber::fmt::format()
-                .with_target(false)
-                .with_level(true)
-                .with_source_location(false),
-        )
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)?;
@@ -75,7 +69,7 @@ pub fn load_logging_config(log_level: Level) -> Result<(), Report> {
 }
 
 #[tracing::instrument]
-pub fn parse_log_level(log_level: &str) -> Result<Level> {
+pub fn parse_log_level(log_level: &str) -> Result<Level, anyhow::Error> {
     match log_level.to_lowercase().as_str() {
         "error" => Ok(Level::ERROR),
         "warn" => Ok(Level::WARN),
