@@ -1,6 +1,7 @@
 use prost_reflect::{
     DynamicMessage, Kind, MessageDescriptor, SerializeOptions, Value as ProstReflectValue,
 };
+use regex::Regex;
 use serde_json::Value as JsonValue;
 use tracing::{debug, error, info};
 
@@ -276,4 +277,15 @@ pub fn serialize_dynamic_message(dynamic_message: &mut DynamicMessage) -> Result
     debug!("Serialized JSON: {:?}", serialized_json);
 
     Ok(serialized_json.into_bytes())
+}
+
+pub const SHORT_STRING: &str = "Hello world";
+pub const LONG_STRING: &str = "This is a much longer string that contains more words";
+
+pub fn string_split_whitespace(file: &str) -> Vec<&str> {
+    file.split_whitespace().collect()
+}
+
+pub fn string_split_whitespace_regex(file: &str) -> Vec<&str> {
+    Regex::new(r"\s+").unwrap().split(&file[1..]).collect()
 }

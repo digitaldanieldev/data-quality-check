@@ -4,9 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = { workspace = true }
+criterion = { workspace = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true }
 prost-types = { workspace = true }
+regex = "1.11.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+
+[[bench]]
+name = "benchmark_validate_whitespace_speed"
+harness = false
