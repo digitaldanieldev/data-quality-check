@@ -17,3 +17,11 @@ tracing = { workspace = true }
 [[bench]]
 name = "benchmark_validate_whitespace_speed"
 harness = false
+
+[[bench]]
+name = "dynamic_message_population"
+harness = false
+
+[[bench]]
+name = "dynamic_message_serialization"
+harness = false
