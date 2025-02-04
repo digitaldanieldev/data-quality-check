@@ -12,8 +12,9 @@ use std::{
 };
 use tokio::net::TcpListener;
 use tokio::runtime::Builder;
-use tracing::{debug, error, info, span, Level};
+use tokio::sync::RwLock;
 
+use tracing::{debug, error, info, span, Level};
 use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
 
 pub mod app_error;
@@ -22,13 +23,14 @@ pub mod json_validation;
 pub mod metrics;
 pub mod protobuf_descriptors;
 
-type DescriptorMap = Arc<Mutex<HashMap<String, Vec<u8>>>>;
+type DescriptorMap = Arc<RwLock<HashMap<String, Vec<u8>>>>;
 
 #[derive(Clone)]
 pub struct AppState {
     descriptor_map: DescriptorMap,
     enable_metrics: bool,
 }
+
 #[derive(Parser, Debug)]
 #[command(version, about = "Proto Producer", long_about = None)]
 struct Args {
@@ -55,6 +57,7 @@ fn main() -> Result<(), anyhow::Error> {
     // Dynamically configure the Tokio runtime with the specified number of worker threads
     let runtime = Builder::new_multi_thread()
         .worker_threads(cli_args.worker_threads)
+        .max_blocking_threads(100)
         .enable_all()
         .build()?;
 
@@ -98,7 +101,7 @@ fn main() -> Result<(), anyhow::Error> {
         let server_address = format!("{}:{}", server_ip, server_port);
 
         let app_state = AppState {
-            descriptor_map: Arc::new(Mutex::new(HashMap::new())),
+            descriptor_map: Arc::new(RwLock::new(HashMap::new())),
             enable_metrics: cli_args.enable_metrics,
         };
 

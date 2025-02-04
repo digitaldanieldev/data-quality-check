@@ -16,7 +16,7 @@ use crate::AppState;
 ////////////////////////////////
 // descriptor loading handler //
 ////////////////////////////////
-///
+
 pub async fn load_descriptor_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoadDescriptorRequest>,
@@ -39,22 +39,9 @@ pub async fn load_descriptor_handler(
         }
     };
 
-    {
-        let mut descriptor_map = state.descriptor_map.lock().unwrap();
-        descriptor_map.insert(file_name.clone(), file_content.clone());
-    }
-
-    // let new_descriptor_pool = match rebuild_descriptor_pool(&state.descriptor_map.lock().unwrap()) {
-    //     Ok(pool) => pool,
-    //     Err(err) => {
-    //         error!("Failed to rebuild descriptor pool: {}", err);
-    //         return (
-    //             StatusCode::INTERNAL_SERVER_ERROR,
-    //             format!("Failed to rebuild descriptor pool: {}", err),
-    //         )
-    //             .into_response();
-    //     }
-    // };
+    // Write lock the RwLock for inserting into the map
+    let mut descriptor_map = state.descriptor_map.write().await;
+    descriptor_map.insert(file_name.clone(), file_content.clone());
 
     info!("Descriptor {} loaded successfully.", file_name);
     (
@@ -63,6 +50,7 @@ pub async fn load_descriptor_handler(
     )
         .into_response()
 }
+
 
 /////////////////////////////
 // json validation handler //
@@ -99,9 +87,9 @@ pub async fn validate_json_handler(
         payload.json.to_string()
     };
 
-    // Continue with your existing validation logic...
+    // Read lock the RwLock to access descriptor_map
     let descriptor_pool = {
-        let descriptor_map = state.descriptor_map.lock().unwrap();
+        let descriptor_map = state.descriptor_map.read().await;
         match rebuild_descriptor_pool(&descriptor_map) {
             Ok(pool) => pool,
             Err(err) => {
