@@ -109,6 +109,22 @@ http POST http://localhost:8080/validate \
     json_escaped:=false \
     field_check:=true \
     field_name="key2" \
-    field_value_check:=42
+    field_value_che
+    
+# tests
+
+## bash
+./load-test.sh --curl
+./load-test.sh --wget
+
+## docker-compose
+docker-compose up load-test-curl
 
 
+docker-compose up load-test-wget
+docker-compose logs load-test-wget > wget_logs.txt
+./requests-per-second.sh
+
+docker-compose up load-test-wget --scale load-test-wget=5
+
+load-test-wget_logs.txt

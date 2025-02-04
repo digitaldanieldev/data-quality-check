@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  load-test-wget:
+    build: .
+    command: ["/usr/local/bin/load-test.sh", "--wget"]
+    deploy:
+      replicas: 5
+    restart: "no"
+
+  load-test-curl:
+    build: .
+    command: ["/usr/local/bin/load-test.sh", "--curl"]
+    deploy:
+      replicas: 5
+    restart: "no"

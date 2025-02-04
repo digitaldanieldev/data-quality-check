@@ -1,0 +1,12 @@
+{
+    "protobuf": "MyMessage",
+    "json": {
+        "key1": "example_value",
+        "key2": 42,
+        "key3": true
+    },
+    "json_escaped": false,
+    "field_check": true,
+    "field_name": "key2",
+    "field_value_check": 42
+}
