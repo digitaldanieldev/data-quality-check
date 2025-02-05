@@ -8,55 +8,55 @@
 
 # Function to run the load test using curl
 run_curl() {
-    #echo "Running curl load test..."
-    start_time=$(date +%s%3N)
+    local run_amount=${RUN_AMOUNT}  # Get the environment variable
+    for ((i=1; i<=run_amount; i++)); do
+        echo "Run $i of $run_amount"
+        start_time=$(date +%s%3N)
 
-    # Load the static fields from message.json
-    message_json=$(cat message.json)
-    #echo "message.json content: $message_json"  # Debug line
+        # Load the static fields from message.json
+        message_json=$(cat message.json)
 
-    # Read the content of data.json
-    data_json=$(cat data.json)
-    #echo "data.json content: $data_json"  # Debug line
+        # Read the content of data.json
+        data_json=$(cat data.json)
 
-    # Inject the content of data.json into the "json" field of message.json
-    final_json=$(echo "$message_json" | jq --argjson data "$data_json" '.json = $data')
-    #echo "Final JSON: $final_json"  # Debug line
+        # Inject the content of data.json into the "json" field of message.json
+        final_json=$(echo "$message_json" | jq --argjson data "$data_json" '.json = $data')
 
-    # Echo the curl command before running it
-    #echo "Executing curl command to: http://$SERVER_IP:$SERVER_PORT/validate"
+        # Run the curl request with the final JSON payload
+        curl -s -X POST -o /dev/null "http://$SERVER_IP:$SERVER_PORT/validate" \
+            -H "Content-Type: application/json" \
+            -d "$final_json"
 
-    # Run the curl request with the final JSON payload
-    # -s -> silent but print response
-    curl -s -X POST -o /dev/null "http://$SERVER_IP:$SERVER_PORT/validate" \
-        -H "Content-Type: application/json" \
-        -d "$final_json"
-
-    end_time=$(date +%s%3N)
-    elapsed_time=$((end_time - start_time))
-    echo "Curl test complete. Elapsed time: $elapsed_time ms."
+        end_time=$(date +%s%3N)
+        elapsed_time=$((end_time - start_time))
+        echo "Curl test complete. Elapsed time: $elapsed_time ms."
+    done
 }
+
 # Function to run the load test using wget
 run_wget() {
-    #echo "Running wget load test..."
-    start_time=$(date +%s%3N)
+    local run_amount=${RUN_AMOUNT}  # Get the environment variable
+    for ((i=1; i<=run_amount; i++)); do
+        echo "Run $i of $run_amount"
+        start_time=$(date +%s%3N)
 
-    # Load the static fields from message.json
-    message_json=$(cat message.json)
+        # Load the static fields from message.json
+        message_json=$(cat message.json)
 
-    # Read the content of data.json
-    data_json=$(cat data.json)
+        # Read the content of data.json
+        data_json=$(cat data.json)
 
-    # Inject the content of data.json into the "json" field of message.json
-    final_json=$(echo "$message_json" | jq --argjson data "$data_json" '.json = $data')
+        # Inject the content of data.json into the "json" field of message.json
+        final_json=$(echo "$message_json" | jq --argjson data "$data_json" '.json = $data')
 
-    # Run the wget request with the final JSON payload
-    wget --quiet --method=POST --header="Content-Type: application/json" \
-        --body-data="$final_json" "http://$SERVER_IP:$SERVER_PORT/validate" -O /dev/null
+        # Run the wget request with the final JSON payload
+        wget --quiet --method=POST --header="Content-Type: application/json" \
+            --body-data="$final_json" "http://$SERVER_IP:$SERVER_PORT/validate" -O /dev/null
 
-    end_time=$(date +%s%3N)
-    elapsed_time=$((end_time - start_time))
-    echo "Wget test complete. Elapsed time: $elapsed_time ms."
+        end_time=$(date +%s%3N)
+        elapsed_time=$((end_time - start_time))
+        echo "Wget test complete. Elapsed time: $elapsed_time ms."
+    done
 }
 
 # Check if the correct flags are passed

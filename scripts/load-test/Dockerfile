@@ -1,13 +1,16 @@
-# Dockerfile
 FROM ubuntu:latest
 
+# Define the build-time variables (ARG)
+ARG RUN_AMOUNT=1000
 ARG SERVER_IP
 ARG SERVER_PORT
 
+# Set environment variables for runtime
+ENV RUN_AMOUNT=${RUN_AMOUNT}
 ENV SERVER_IP=${SERVER_IP}
 ENV SERVER_PORT=${SERVER_PORT}
 
-# Install wget, curl, bc (for math operations), jq
+# Install necessary dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -15,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Add the load-test script into the container
+# Copy the load-test script and necessary files into the container
 COPY load-test.sh /load-test.sh
 COPY data.json /data.json
 COPY message.json /message.json
@@ -23,6 +26,6 @@ COPY message.json /message.json
 # Make the script executable
 RUN chmod +x /load-test.sh
 
-# Set the default command to run the load test script
-CMD ["/load-test.sh", "--curl"]
+# Set the default command to run the load test script with the passed arguments
+CMD ["/load-test.sh", "--curl", "$RUN_AMOUNT"]
 

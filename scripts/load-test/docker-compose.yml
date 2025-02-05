@@ -6,9 +6,11 @@ services:
     build:
       context: .
       args:
+        - RUN_AMOUNT=${RUN_AMOUNT}
         - SERVER_IP=${SERVER_IP}
         - SERVER_PORT=${SERVER_PORT}
     environment:
+      - RUN_AMOUNT=${RUN_AMOUNT}
       - SERVER_IP=${SERVER_IP}
       - SERVER_PORT=${SERVER_PORT}
     command: ["/load-test.sh", "--wget"]
@@ -20,9 +22,11 @@ services:
     build:
       context: .
       args:
+        - RUN_AMOUNT=${RUN_AMOUNT}
         - SERVER_IP=${SERVER_IP}
         - SERVER_PORT=${SERVER_PORT}
     environment:
+      - RUN_AMOUNT=${RUN_AMOUNT}
       - SERVER_IP=${SERVER_IP}
       - SERVER_PORT=${SERVER_PORT}
     command: ["/load-test.sh", "--curl"]
