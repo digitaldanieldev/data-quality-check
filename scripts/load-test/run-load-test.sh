@@ -3,7 +3,7 @@
 # Check if correct number of arguments are provided
 if [ "$#" -ne 2 ]; then
     echo "Usage: $0 <service_name> <scale_size>"
-    echo "Example: $0 load-test-wget 5"
+    echo "Example: $0 load-test-curl 5"
     exit 1
 fi
 
@@ -12,8 +12,7 @@ SERVICE_NAME=$1      # Service name (e.g., load-test-wget or load-test-curl)
 SCALE_SIZE=$2        # Scale size (e.g., 5)
 
 # Log file names
-WGET_LOG_FILE="${SERVICE_NAME}_logs.txt"
-CURL_LOG_FILE="load-test-curl_logs.txt"
+LOG_FILE="test_logs.txt"
 
 # Check if valid service name is provided
 if [[ "$SERVICE_NAME" != "load-test-wget" && "$SERVICE_NAME" != "load-test-curl" ]]; then
@@ -35,18 +34,21 @@ sleep 10
 
 # Remove any existing *_logs.txt files
 echo "Removing old log files..."
-rm *.txt
+rm ./test_logs.txt
 
 # Fetch the logs for the specified service and write them to the log file
 echo "Fetching logs for $SERVICE_NAME..."
-docker-compose logs $SERVICE_NAME > "$WGET_LOG_FILE"
+docker-compose logs $SERVICE_NAME > "$LOG_FILE"
 
 # Run the requests-per-second script to process the logs
-echo "Running requests-per-second script..."
-./requests-per-second.sh "$WGET_LOG_FILE" "$CURL_LOG_FILE"
+#echo "Running requests-per-second script..."
+./requests-per-second.sh "$LOG_FILE"
 
 # Optionally, stop the containers after the test
 echo "Stopping containers..."
 docker-compose down
+
+echo "Removing log files..."
+rm ./test_logs.txt
 
 echo "Load test completed and results processed."

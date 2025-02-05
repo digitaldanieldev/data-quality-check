@@ -1,20 +1,28 @@
-# Use a lightweight image that has curl and wget installed
+# Dockerfile
 FROM ubuntu:latest
 
-# Install wget, curl, and bc (for math operations)
+ARG SERVER_IP
+ARG SERVER_PORT
+
+ENV SERVER_IP=${SERVER_IP}
+ENV SERVER_PORT=${SERVER_PORT}
+
+# Install wget, curl, bc (for math operations), jq
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     bc \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Add the speed test script into the container
-ADD load-test.sh /usr/local/bin/load-test.sh
+# Add the load-test script into the container
+COPY load-test.sh /load-test.sh
+COPY data.json /data.json
+COPY message.json /message.json
 
 # Make the script executable
-RUN chmod +x /usr/local/bin/load-test.sh
+RUN chmod +x /load-test.sh
 
-# Set the default command to run the speed test script
-# Default to wget
-CMD ["/usr/local/bin/load-test.sh", "--wget"]
+# Set the default command to run the load test script
+CMD ["/load-test.sh", "--curl"]
 

@@ -115,7 +115,9 @@ http POST http://localhost:8080/validate \
 
 ## bash
 ./load-test.sh --curl
+SERVER_IP=192.168.178.106 SERVER_PORT=8080 ./load-test.sh --curl
 ./load-test.sh --wget
+SERVER_IP=192.168.178.106 SERVER_PORT=8080 ./load-test.sh --wget
 
 ## docker-compose
 docker-compose up load-test-curl

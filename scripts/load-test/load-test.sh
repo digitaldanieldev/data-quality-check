@@ -1,51 +1,71 @@
 #!/bin/bash
 
-# File to hold the JSON data
-DATA_FILE="data.json"
+# Add debugging information at the start
+#echo "Debug info:"
+#echo "SERVER_IP: $SERVER_IP"
+#echo "SERVER_PORT: $SERVER_PORT"
+# env | grep SERVER
 
-# Number of requests
-NUM_REQUESTS=10000
-URL="http://localhost:8080/validate"
+# Function to run the load test using curl
+run_curl() {
+    #echo "Running curl load test..."
+    start_time=$(date +%s%3N)
 
-# Function to run wget requests
-function run_wget {
-    echo "Running wget..."
-    start_time=$(date +%s%3N) 
+    # Load the static fields from message.json
+    message_json=$(cat message.json)
+    #echo "message.json content: $message_json"  # Debug line
 
-    for ((i=1; i<=NUM_REQUESTS; i++)); do
-        wget --quiet --method=POST --header="Content-Type: application/json" --body-file=$DATA_FILE -O - $URL > /dev/null
-    done
+    # Read the content of data.json
+    data_json=$(cat data.json)
+    #echo "data.json content: $data_json"  # Debug line
 
-    end_time=$(date +%s%3N) 
-    elapsed_time=$((end_time - start_time)) 
-    rps=$(echo "scale=2; $NUM_REQUESTS / ($elapsed_time / 1000)" | bc) 
-    echo "Wget test complete. Elapsed time: $elapsed_time ms. Requests per second: $rps."
+    # Inject the content of data.json into the "json" field of message.json
+    final_json=$(echo "$message_json" | jq --argjson data "$data_json" '.json = $data')
+    #echo "Final JSON: $final_json"  # Debug line
+
+    # Echo the curl command before running it
+    #echo "Executing curl command to: http://$SERVER_IP:$SERVER_PORT/validate"
+
+    # Run the curl request with the final JSON payload
+    # -s -> silent but print response
+    curl -s -X POST -o /dev/null "http://$SERVER_IP:$SERVER_PORT/validate" \
+        -H "Content-Type: application/json" \
+        -d "$final_json"
+
+    end_time=$(date +%s%3N)
+    elapsed_time=$((end_time - start_time))
+    echo "Curl test complete. Elapsed time: $elapsed_time ms."
+}
+# Function to run the load test using wget
+run_wget() {
+    #echo "Running wget load test..."
+    start_time=$(date +%s%3N)
+
+    # Load the static fields from message.json
+    message_json=$(cat message.json)
+
+    # Read the content of data.json
+    data_json=$(cat data.json)
+
+    # Inject the content of data.json into the "json" field of message.json
+    final_json=$(echo "$message_json" | jq --argjson data "$data_json" '.json = $data')
+
+    # Run the wget request with the final JSON payload
+    wget --quiet --method=POST --header="Content-Type: application/json" \
+        --body-data="$final_json" "http://$SERVER_IP:$SERVER_PORT/validate" -O /dev/null
+
+    end_time=$(date +%s%3N)
+    elapsed_time=$((end_time - start_time))
+    echo "Wget test complete. Elapsed time: $elapsed_time ms."
 }
 
-# Function to run curl requests
-function run_curl {
-    echo "Running curl..."
-    start_time=$(date +%s%3N) 
-
-    for ((i=1; i<=NUM_REQUESTS; i++)); do
-        curl --silent -X POST -H "Content-Type: application/json" -d "@$DATA_FILE" $URL > /dev/null
-    done
-
-    end_time=$(date +%s%3N) 
-    elapsed_time=$((end_time - start_time)) 
-    rps=$(echo "scale=2; $NUM_REQUESTS / ($elapsed_time / 1000)" | bc) 
-    echo "Curl test complete. Elapsed time: $elapsed_time ms. Requests per second: $rps."
-}
-
-# Parse flags
-if [[ "$1" == "--wget" ]]; then
-    echo "Starting speed test with wget..."
-    run_wget
-elif [[ "$1" == "--curl" ]]; then
-    echo "Starting speed test with curl..."
+# Check if the correct flags are passed
+if [[ "$1" == "--curl" ]]; then
     run_curl
+elif [[ "$1" == "--wget" ]]; then
+    run_wget
 else
-    echo "Please provide either --wget or --curl to choose the tool to run."
+    echo "Usage: load-test.sh --curl or load-test.sh --wget"
     exit 1
 fi
 

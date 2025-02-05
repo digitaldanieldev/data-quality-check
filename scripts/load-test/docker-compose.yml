@@ -1,16 +1,31 @@
+# docker-compose.yml
 version: '3'
 
 services:
   load-test-wget:
-    build: .
-    command: ["/usr/local/bin/load-test.sh", "--wget"]
+    build:
+      context: .
+      args:
+        - SERVER_IP=${SERVER_IP}
+        - SERVER_PORT=${SERVER_PORT}
+    environment:
+      - SERVER_IP=${SERVER_IP}
+      - SERVER_PORT=${SERVER_PORT}
+    command: ["/load-test.sh", "--wget"]
     deploy:
       replicas: 5
     restart: "no"
 
   load-test-curl:
-    build: .
-    command: ["/usr/local/bin/load-test.sh", "--curl"]
+    build:
+      context: .
+      args:
+        - SERVER_IP=${SERVER_IP}
+        - SERVER_PORT=${SERVER_PORT}
+    environment:
+      - SERVER_IP=${SERVER_IP}
+      - SERVER_PORT=${SERVER_PORT}
+    command: ["/load-test.sh", "--curl"]
     deploy:
       replicas: 5
     restart: "no"
