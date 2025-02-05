@@ -1,3 +1,4 @@
+run-load-test.sh 
 #!/bin/bash
 
 # Check if correct number of arguments are provided
@@ -30,7 +31,7 @@ docker-compose up $SERVICE_NAME --scale $SERVICE_NAME=$SCALE_SIZE -d
 
 # Give some time for the containers to start and perform the test
 echo "Waiting for the containers to start and complete the load test..."
-sleep 10
+sleep 15
 
 # Remove any existing *_logs.txt files
 echo "Removing old log files..."
@@ -51,4 +52,4 @@ docker-compose down
 echo "Removing log files..."
 rm ./test_logs.txt
 
-echo "Load test completed and results processed."
+echo "Load test completed and results processed." 
