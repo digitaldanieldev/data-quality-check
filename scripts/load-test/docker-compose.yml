@@ -15,7 +15,7 @@ services:
       - SERVER_PORT=${SERVER_PORT}
     command: ["/load-test.sh", "--wget"]
     deploy:
-      replicas: 5
+      replicas: 2
     restart: "no"
 
   load-test-curl:

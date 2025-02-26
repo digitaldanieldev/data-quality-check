@@ -1,0 +1,19 @@
+[package]
+name = "load-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dotenvy = { workspace = true }
+env_logger = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+data-quality-settings = { workspace = true }
+dynamic-message = { workspace = true }

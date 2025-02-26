@@ -10,6 +10,12 @@ use criterion for benchmarking
 
 # Config-producer-proto
 
+# make sure protobuf compiler is installed
+# firewall on system!
+# use docker!
+
+apt -y install protobuf-compiler
+
 ## Run Once (One-time processing)
 
 This will process the .proto files and send them to the server once.
@@ -52,7 +58,7 @@ curl -X POST http://localhost:8080/validate \
     "field_name": "key2",
     "field_value_check": 42  }'
 
-curl -X POST http://localhost:8080/validate   -H "Content-Type: application/json"   -d '{
+curl -X POST http://192.168.5.246:8081/validate   -H "Content-Type: application/json"   -d '{
     "protobuf": "MyMessage", 
     "json": {"key1": "example_value", "key2": 42, "key3": true}, 
     "json_escaped": false,
