@@ -136,3 +136,6 @@ docker-compose logs load-test-wget > wget_logs.txt
 docker-compose up load-test-wget --scale load-test-wget=5
 
 load-test-wget_logs.txt
+
+## dockerignore
+exclude folders listed here when using COPY . . in the Dockerfile

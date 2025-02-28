@@ -11,8 +11,8 @@ services:
       - RUST_LOG=debug
       - SERVER_PORT
     volumes:
-      - ./data-quality-server/.data:/data
-      - ./data-quality-server/.env:.env
+      - ./data:/data
+      - ${PWD}/.env:/.env
 
   config_producer:
     build:
@@ -22,5 +22,9 @@ services:
     restart: unless-stopped
     environment:
       - RUST_LOG=debug
+    volumes:
+      - ./data:/data
+      - ${PWD}/.env:/.env
     depends_on:
       - data_quality
+
