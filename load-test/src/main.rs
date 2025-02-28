@@ -1,12 +1,12 @@
-use reqwest;
-use tokio;
 use futures::future::join_all;
-use serde::{Serialize, Deserialize};
-use serde_json::{Value, json};
-use std::time::{Instant, Duration};
+use log::{debug, error, info};
+use reqwest;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use log::{info, debug, error};  // Import log macros for logging
+use std::time::{Duration, Instant};
+use tokio; // Import log macros for logging
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct ValidationRequest {
@@ -53,7 +53,8 @@ impl ValidationRequest {
             .build()?;
 
         debug!("Sending request to validate data: {:?}", self.json_data);
-        let response = client.post("http://192.168.5.246:8081/validate")
+        let response = client
+            .post("http://192.168.5.246:8081/validate")
             .header("Content-Type", "application/json")
             .json(self)
             .send()
@@ -76,27 +77,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "key3": true
     });
 
-    // let a: usize = 4;
-    // let b: isize = -2;
-    // let c: usize = (a as isize + b) as usize;
-
-    // let mut my_vec: Vec<isize> = Vec::new();
-    // my_vec.insert(0, 4);
-    // my_vec.insert(1,-4);
-    // my_vec.insert(2, 4);
-    // my_vec.insert(3,-7);
-
-    // let idx: usize = 2;
-    // let mut my_vec2: Vec<isize> = my_vec[idx::-1];
-
-
-    let requests: Vec<ValidationRequest> = (0..1000).map(|i| {
-        ValidationRequest::new_with_field_check(
-            sample_data.clone(), 
-            "key2".to_string(),
-            42
-        )
-    }).collect();
+    let requests: Vec<ValidationRequest> = (0..1000)
+        .map(|i| {
+            ValidationRequest::new_with_field_check(sample_data.clone(), "key2".to_string(), 42)
+        })
+        .collect();
 
     const MAX_CONCURRENCY: usize = 2;
     let total_requests = requests.len();
@@ -126,9 +111,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        })).await;
+        }))
+        .await;
 
-        let batch_completed = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
+        let batch_completed = results
+            .iter()
+            .filter(|r| r.as_ref().unwrap().is_ok())
+            .count();
 
         let batch_duration = batch_start.elapsed();
         info!("{:?}", batch_duration);
@@ -142,10 +131,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         info!("Batch statistics:");
         info!("  Time taken: {:.2?}", batch_duration);
-        info!("  Requests completed in batch: {}/{}", batch_completed, chunk_size);
-        info!("  Total completed: {}/{} ({:.1}%)", 
-            completed, total_requests,
-            (completed as f64 / total_requests as f64 * 100.0));
+        info!(
+            "  Requests completed in batch: {}/{}",
+            batch_completed, chunk_size
+        );
+        info!(
+            "  Total completed: {}/{} ({:.1}%)",
+            completed,
+            total_requests,
+            (completed as f64 / total_requests as f64 * 100.0)
+        );
         info!("  Current RPS: {:.1}\n", rps);
 
         requests = remaining.to_vec();
@@ -161,8 +156,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Final Statistics:");
     info!("-------------");
     info!("Total duration: {:#?}", total_duration);
-    info!("Total requests completed: {}/{}", 
-            counter.load(Ordering::Relaxed), total_requests);
+    info!(
+        "Total requests completed: {}/{}",
+        counter.load(Ordering::Relaxed),
+        total_requests
+    );
     info!("Average requests per second: {:.1}", final_rps);
 
     Ok(())
