@@ -100,12 +100,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let requests: Vec<ValidationRequest> = (0..100)
-        .map(|i| {
-            ValidationRequest::new_with_field_check(sample_data.clone(), "key2".to_string(), 42)
-        })
+        .map(|i| ValidationRequest::new_with_field_check(sample_data.clone(), "key2".to_string(), 42))
         .collect();
 
-    const MAX_CONCURRENCY: usize = 20;
+    const MAX_CONCURRENCY: usize = 2;
     let total_requests = requests.len();
     let start_time = Instant::now();
     let counter = Arc::new(AtomicUsize::new(0));
@@ -113,21 +111,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting validation with {} requests...", total_requests);
     info!("Concurrency level: {}\n", MAX_CONCURRENCY);
 
-    // Create a single client outside the loop to reuse across all requests
-    let client = reqwest::Client::new();
-
     let mut requests = requests;
 
+    // Run batches of requests concurrently
     while !requests.is_empty() {
         let chunk_size = std::cmp::min(MAX_CONCURRENCY, requests.len());
-        let (chunk, remaining) = requests.split_at(chunk_size);
+        let (chunk, remaining) = requests.split_at_mut(chunk_size);
         let batch_start = Instant::now();
 
         debug!("Processing a batch of {} requests...", chunk_size);
 
-        let results = join_all(chunk.iter().map(|req| {
+        let results = join_all(chunk.iter_mut().map(|req| {
             let counter_clone = Arc::clone(&counter);
-            let load_test_target_clone = Arc::clone(&load_test_target);  // Works!
+            let load_test_target_clone = Arc::clone(&load_test_target);
             async move {
                 match req.send(&counter_clone, &load_test_target_clone).await {
                     Ok(_) => Some(Ok(())),
