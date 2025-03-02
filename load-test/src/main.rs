@@ -57,25 +57,6 @@ impl ValidationRequest {
             field_value_check: 0,
         }
     }
-
-    async fn send(&self, counter: &AtomicUsize, test_target: &String) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
-
-        debug!("Sending request to validate data: {:?}", self.json_data);
-        let response = client
-            .post(test_target)
-            .header("Content-Type", "application/json")
-            .json(self)
-            .send()
-            .await?;
-
-        let result = response.json::<Value>().await?;
-
-        counter.fetch_add(1, Ordering::Relaxed);
-        Ok(result)
-    }
 }
 
 #[tokio::main]
@@ -91,7 +72,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server_ip = dotenvy::var("DATA_QUALITY_SERVER_IP_TARGET")?;
     let server_port = dotenvy::var("DATA_QUALITY_SERVER_PORT")?;
     let server_address = format!("{}:{}", server_ip, server_port);
-    let load_test_target = Arc::new(format!("http://{}/validate", server_address));
+    
+    // Create a single client instance
+    let client = Arc::new(reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?);
 
     let sample_data = json!({
         "key1": "example_value",
@@ -99,95 +84,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "key3": true
     });
 
-    const MAX_CONCURRENCY: usize = 2;
-    let total_requests = 100;
-    let counter = Arc::new(AtomicUsize::new(0));
+    // Create validation requests
+    let num_requests = 1000;
+    let requests: Vec<_> = (0..num_requests)
+        .map(|_| ValidationRequest::new_without_field_check(sample_data.clone()))
+        .collect();
 
-    // Spawn multiple load test tasks
-    let mut tasks = Vec::new();
-
-    for i in 0..2 { // Starting n concurrent load tests
-        let test_target_clone = Arc::clone(&load_test_target);
-        let counter_clone = Arc::clone(&counter);
+    // Measure execution time
+    let start_time = Instant::now();
     
-        // Clone `sample_data` inside the loop before spawning the task
-        let cloned_sample_data = sample_data.clone(); // <-- clone here
-    
-        let task = tokio::spawn(async move {
-            let requests: Vec<ValidationRequest> = (0..total_requests)
-                .map(|_| ValidationRequest::new_with_field_check(cloned_sample_data.clone(), "key2".to_string(), 42))
-                .collect();
-    
-            let start_time = Instant::now();
-            info!("Starting load test {i}...");
-    
-            // Run the load test for this task
-            let mut requests = requests;
-            while !requests.is_empty() {
-                let chunk_size = std::cmp::min(MAX_CONCURRENCY, requests.len());
-                let (chunk, remaining) = requests.split_at_mut(chunk_size);
-                let batch_start = Instant::now();
-    
-                debug!("Processing a batch of {} requests for load test {i}...", chunk_size);
-    
-                let results = join_all(chunk.iter_mut().map(|req| {
-                    let counter_clone = Arc::clone(&counter_clone);
-                    let load_test_target_clone = Arc::clone(&test_target_clone);
-                    async move {
-                        match req.send(&counter_clone, &load_test_target_clone).await {
-                            Ok(_) => Some(Ok(())),
-                            Err(e) => {
-                                error!("Error in request: {}", e);
-                                Some(Err(e))
-                            }
-                        }
-                    }
-                }))
+    // Send concurrent requests using join_all
+    let responses: Vec<Result<reqwest::Response, reqwest::Error>> = join_all(requests.iter().map(|request| {
+        let client = Arc::clone(&client);
+        let target_url = format!("http://{}/validate", server_address);
+        
+        async move {
+            let res = client.post(&target_url)
+                .json(request)
+                .send()
                 .await;
-    
-                let batch_duration = batch_start.elapsed();
-                let elapsed_time = start_time.elapsed();
-                let completed = counter_clone.load(Ordering::Relaxed);
-                let rps = if elapsed_time.as_secs() > 0 {
-                    (completed as f64) / elapsed_time.as_secs_f64()
-                } else {
-                    0.0
-                };
-    
-                // Log the batch statistics for this task
-                info!("Batch statistics for load test {i}:");
-                info!("  Time taken: {:.2?}", batch_duration);
-                info!(
-                    "  Requests completed in batch: {}/{}",
-                    completed,
-                    total_requests
-                );
-                info!("  Current RPS: {:.1}\n", rps);
-    
-                // Move to the next batch
-                requests = remaining.to_vec();
-            }
-    
-            let total_duration = start_time.elapsed();
-            let final_rps = if total_duration.as_secs() > 0 {
-                (counter_clone.load(Ordering::Relaxed) as f64) / total_duration.as_secs_f64()
-            } else {
-                0.0
-            };
-    
-            info!("Load test {i} completed:");
-            info!("Total duration: {:#?}", total_duration);
-            info!("Total requests completed: {}/{}", counter_clone.load(Ordering::Relaxed), total_requests);
-            info!("Average requests per second: {:.1}", final_rps);
-        });
-    
-        tasks.push(task);
-    }
-    
-    // Wait for all tasks to complete
-    let _ = join_all(tasks).await;
-    
+            res
+        }
+    })).await;
 
+    // Process results
+    let duration = start_time.elapsed();
+    let success_count = responses.iter().filter(|r| r.as_ref().unwrap().status().is_success()).count();
+    
+    info!(
+        "Load test completed - Total requests: {}, Successes: {}, Duration: {:?}",
+        num_requests,
+        success_count,
+        duration
+    );
 
     Ok(())
 }
