@@ -1,6 +1,13 @@
 # docker-bake.hcl
 group "default" {
-  targets = ["data_quality", "config_producer"]
+  targets = ["config_producer", "data_quality", "load_test"]
+}
+
+target "config_producer" {
+  context = "."
+  dockerfile = "Dockerfile"
+  target = "config_producer"
+  tags = ["config_producer_proto"]
 }
 
 target "data_quality" {
@@ -10,9 +17,10 @@ target "data_quality" {
   tags = ["data_quality_server"]
 }
 
-target "config_producer" {
+target "load_test" {
   context = "."
   dockerfile = "Dockerfile"
-  target = "config_producer"
-  tags = ["config_producer_proto"]
+  target = "load_test"
+  tags = ["load_test_data_quality_server"]
 }
+

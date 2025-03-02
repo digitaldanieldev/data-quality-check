@@ -47,6 +47,13 @@ curl -X POST http://localhost:8080/validate \
     "protobuf": "MyMessage", 
     "json": "{\"key1\": \"example_value\", \"key2\": 42, \"key3\": true}" }'
 
+192.168.90.169
+
+curl -X POST http://192.168.90.169:8080/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protobuf": "MyMessage", 
+    "json": "{\"key1\": \"example_value\", \"key2\": 42, \"key3\": true}" }'
 ## Check if JSON can be serialized using MyMessage protobuf definition and validate that field key2 contains the number 42 - test success protobuf with added field validation
 curl -X POST http://localhost:8080/validate \
   -H "Content-Type: application/json" \

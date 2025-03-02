@@ -51,8 +51,8 @@ async fn main() -> Result<()> {
         let _enter = span.enter();
 
         let proto_schema_input_dir = dotenvy::var("PROTO_SCHEMA_INPUT_DIR")?;
-        let server_ip = dotenvy::var("SERVER_IP")?;
-        let server_port = dotenvy::var("SERVER_PORT")?;
+        let server_ip = dotenvy::var("DATA_QUALITY_SERVER_IP")?;
+        let server_port = dotenvy::var("DATA_QUALITY_SERVER_PORT")?;
         let server_address = format!("{}:{}", server_ip, server_port);
 
         let protobuf_definitions: Arc<TokioMutex<HashMap<String, (Vec<u8>, u64)>>> =

@@ -1,12 +1,23 @@
 use futures::future::join_all;
-use log::{debug, error, info};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio; // Import log macros for logging
+use tokio;
+use tracing::{debug, error, info, span, Level};
+use clap::Parser;
+
+use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
+
+#[derive(Parser, Debug)]
+#[command(version, about = "Load Test", long_about = None)]
+struct Args {
+    /// Logging level
+    #[clap(short, long, default_value = "info")]
+    log_level: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct ValidationRequest {
@@ -47,14 +58,14 @@ impl ValidationRequest {
         }
     }
 
-    async fn send(&self, counter: &AtomicUsize) -> Result<Value, Box<dyn std::error::Error>> {
+    async fn send(&self, counter: &AtomicUsize, test_target: &String) -> Result<Value, Box<dyn std::error::Error>> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()?;
 
         debug!("Sending request to validate data: {:?}", self.json_data);
         let response = client
-            .post("http://192.168.5.246:8081/validate")
+            .post(test_target)
             .header("Content-Type", "application/json")
             .json(self)
             .send()
@@ -69,7 +80,18 @@ impl ValidationRequest {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    let cli_args = Args::parse();
+    let log_level = parse_log_level(&cli_args.log_level)?;
+    let _ = load_logging_config(log_level);
+    load_env_variables();
+
+    let span = span!(Level::INFO, "load tester");
+    let _enter = span.enter();
+
+    let server_ip = dotenvy::var("DATA_QUALITY_SERVER_IP_TARGET")?;
+    let server_port = dotenvy::var("DATA_QUALITY_SERVER_PORT")?;
+    let server_address = format!("{}:{}", server_ip, server_port);
+    let load_test_target = Arc::new(format!("http://{}/validate", server_address));
 
     let sample_data = json!({
         "key1": "example_value",
@@ -77,19 +99,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "key3": true
     });
 
-    let requests: Vec<ValidationRequest> = (0..1000)
+    let requests: Vec<ValidationRequest> = (0..100)
         .map(|i| {
             ValidationRequest::new_with_field_check(sample_data.clone(), "key2".to_string(), 42)
         })
         .collect();
 
-    const MAX_CONCURRENCY: usize = 2;
+    const MAX_CONCURRENCY: usize = 20;
     let total_requests = requests.len();
     let start_time = Instant::now();
     let counter = Arc::new(AtomicUsize::new(0));
 
     info!("Starting validation with {} requests...", total_requests);
     info!("Concurrency level: {}\n", MAX_CONCURRENCY);
+
+    // Create a single client outside the loop to reuse across all requests
+    let client = reqwest::Client::new();
 
     let mut requests = requests;
 
@@ -102,8 +127,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let results = join_all(chunk.iter().map(|req| {
             let counter_clone = Arc::clone(&counter);
+            let load_test_target_clone = Arc::clone(&load_test_target);  // Works!
             async move {
-                match req.send(&counter_clone).await {
+                match req.send(&counter_clone, &load_test_target_clone).await {
                     Ok(_) => Some(Ok(())),
                     Err(e) => {
                         error!("Error in request: {}", e);
@@ -120,7 +146,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .count();
 
         let batch_duration = batch_start.elapsed();
-        info!("{:?}", batch_duration);
         let elapsed_time = start_time.elapsed();
         let completed = counter.load(Ordering::Relaxed);
         let rps = if elapsed_time.as_secs() > 0 {
@@ -129,6 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             0.0
         };
 
+        // Log the batch statistics
         info!("Batch statistics:");
         info!("  Time taken: {:.2?}", batch_duration);
         info!(
@@ -143,6 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         info!("  Current RPS: {:.1}\n", rps);
 
+        // Move to the next batch
         requests = remaining.to_vec();
     }
 

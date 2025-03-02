@@ -34,3 +34,8 @@ RUN apt-get update && apt-get upgrade -y && \
 COPY --from=builder /app/target/release/config-producer-proto /config-producer-proto
 ENTRYPOINT ["/config-producer-proto"]
 
+# Runtime Stage for load_test
+FROM debian:bookworm-slim AS load_test
+
+COPY --from=builder /app/target/release/load-test /load-test
+ENTRYPOINT ["/load-test"]

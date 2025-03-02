@@ -14,8 +14,8 @@ use tokio::net::TcpListener;
 use tokio::runtime::Builder;
 use tokio::sync::RwLock;
 
-use tracing::{debug, error, info, span, Level};
 use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
+use tracing::{debug, error, info, span, Level};
 
 pub mod app_error;
 pub mod handlers;
@@ -94,9 +94,10 @@ fn main() -> Result<(), anyhow::Error> {
         } else {
             None
         };
-        let server_ip = env::var("SERVER_IP").context("SERVER_IP environment variable missing")?;
-        let server_port =
-            env::var("SERVER_PORT").context("SERVER_PORT environment variable missing")?;
+        let server_ip = env::var("DATA_QUALITY_SERVER_IP")
+            .context("DATA_QUALITY_SERVER_IP environment variable missing")?;
+        let server_port = env::var("DATA_QUALITY_SERVER_PORT")
+            .context("DATA_QUALITY_SERVER_PORT environment variable missing")?;
 
         let server_address = format!("{}:{}", server_ip, server_port);
 
