@@ -58,7 +58,7 @@ impl ValidationRequest {
         }
     }
 
-    async fn send(&self, counter: &AtomicUsize, test_target: &String) -> Result<Value, Box<dyn std::error::Error>> {
+    async fn send(&self, counter: &AtomicUsize, test_target: &String) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()?;
@@ -79,7 +79,7 @@ impl ValidationRequest {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli_args = Args::parse();
     let log_level = parse_log_level(&cli_args.log_level)?;
     let _ = load_logging_config(log_level);
@@ -99,92 +99,95 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "key3": true
     });
 
-    let requests: Vec<ValidationRequest> = (0..100)
-        .map(|i| ValidationRequest::new_with_field_check(sample_data.clone(), "key2".to_string(), 42))
-        .collect();
-
     const MAX_CONCURRENCY: usize = 2;
-    let total_requests = requests.len();
-    let start_time = Instant::now();
+    let total_requests = 100;
     let counter = Arc::new(AtomicUsize::new(0));
 
-    info!("Starting validation with {} requests...", total_requests);
-    info!("Concurrency level: {}\n", MAX_CONCURRENCY);
+    // Spawn multiple load test tasks
+    let mut tasks = Vec::new();
 
-    let mut requests = requests;
-
-    // Run batches of requests concurrently
-    while !requests.is_empty() {
-        let chunk_size = std::cmp::min(MAX_CONCURRENCY, requests.len());
-        let (chunk, remaining) = requests.split_at_mut(chunk_size);
-        let batch_start = Instant::now();
-
-        debug!("Processing a batch of {} requests...", chunk_size);
-
-        let results = join_all(chunk.iter_mut().map(|req| {
-            let counter_clone = Arc::clone(&counter);
-            let load_test_target_clone = Arc::clone(&load_test_target);
-            async move {
-                match req.send(&counter_clone, &load_test_target_clone).await {
-                    Ok(_) => Some(Ok(())),
-                    Err(e) => {
-                        error!("Error in request: {}", e);
-                        Some(Err(e))
+    for i in 0..2 { // Starting n concurrent load tests
+        let test_target_clone = Arc::clone(&load_test_target);
+        let counter_clone = Arc::clone(&counter);
+    
+        // Clone `sample_data` inside the loop before spawning the task
+        let cloned_sample_data = sample_data.clone(); // <-- clone here
+    
+        let task = tokio::spawn(async move {
+            let requests: Vec<ValidationRequest> = (0..total_requests)
+                .map(|_| ValidationRequest::new_with_field_check(cloned_sample_data.clone(), "key2".to_string(), 42))
+                .collect();
+    
+            let start_time = Instant::now();
+            info!("Starting load test {i}...");
+    
+            // Run the load test for this task
+            let mut requests = requests;
+            while !requests.is_empty() {
+                let chunk_size = std::cmp::min(MAX_CONCURRENCY, requests.len());
+                let (chunk, remaining) = requests.split_at_mut(chunk_size);
+                let batch_start = Instant::now();
+    
+                debug!("Processing a batch of {} requests for load test {i}...", chunk_size);
+    
+                let results = join_all(chunk.iter_mut().map(|req| {
+                    let counter_clone = Arc::clone(&counter_clone);
+                    let load_test_target_clone = Arc::clone(&test_target_clone);
+                    async move {
+                        match req.send(&counter_clone, &load_test_target_clone).await {
+                            Ok(_) => Some(Ok(())),
+                            Err(e) => {
+                                error!("Error in request: {}", e);
+                                Some(Err(e))
+                            }
+                        }
                     }
-                }
+                }))
+                .await;
+    
+                let batch_duration = batch_start.elapsed();
+                let elapsed_time = start_time.elapsed();
+                let completed = counter_clone.load(Ordering::Relaxed);
+                let rps = if elapsed_time.as_secs() > 0 {
+                    (completed as f64) / elapsed_time.as_secs_f64()
+                } else {
+                    0.0
+                };
+    
+                // Log the batch statistics for this task
+                info!("Batch statistics for load test {i}:");
+                info!("  Time taken: {:.2?}", batch_duration);
+                info!(
+                    "  Requests completed in batch: {}/{}",
+                    completed,
+                    total_requests
+                );
+                info!("  Current RPS: {:.1}\n", rps);
+    
+                // Move to the next batch
+                requests = remaining.to_vec();
             }
-        }))
-        .await;
-
-        let batch_completed = results
-            .iter()
-            .filter(|r| r.as_ref().unwrap().is_ok())
-            .count();
-
-        let batch_duration = batch_start.elapsed();
-        let elapsed_time = start_time.elapsed();
-        let completed = counter.load(Ordering::Relaxed);
-        let rps = if elapsed_time.as_secs() > 0 {
-            (completed as f64) / elapsed_time.as_secs_f64()
-        } else {
-            0.0
-        };
-
-        // Log the batch statistics
-        info!("Batch statistics:");
-        info!("  Time taken: {:.2?}", batch_duration);
-        info!(
-            "  Requests completed in batch: {}/{}",
-            batch_completed, chunk_size
-        );
-        info!(
-            "  Total completed: {}/{} ({:.1}%)",
-            completed,
-            total_requests,
-            (completed as f64 / total_requests as f64 * 100.0)
-        );
-        info!("  Current RPS: {:.1}\n", rps);
-
-        // Move to the next batch
-        requests = remaining.to_vec();
+    
+            let total_duration = start_time.elapsed();
+            let final_rps = if total_duration.as_secs() > 0 {
+                (counter_clone.load(Ordering::Relaxed) as f64) / total_duration.as_secs_f64()
+            } else {
+                0.0
+            };
+    
+            info!("Load test {i} completed:");
+            info!("Total duration: {:#?}", total_duration);
+            info!("Total requests completed: {}/{}", counter_clone.load(Ordering::Relaxed), total_requests);
+            info!("Average requests per second: {:.1}", final_rps);
+        });
+    
+        tasks.push(task);
     }
+    
+    // Wait for all tasks to complete
+    let _ = join_all(tasks).await;
+    
 
-    let total_duration = start_time.elapsed();
-    let final_rps = if total_duration.as_secs() > 0 {
-        (counter.load(Ordering::Relaxed) as f64) / total_duration.as_secs_f64()
-    } else {
-        0.0
-    };
-
-    info!("Final Statistics:");
-    info!("-------------");
-    info!("Total duration: {:#?}", total_duration);
-    info!(
-        "Total requests completed: {}/{}",
-        counter.load(Ordering::Relaxed),
-        total_requests
-    );
-    info!("Average requests per second: {:.1}", final_rps);
 
     Ok(())
 }
