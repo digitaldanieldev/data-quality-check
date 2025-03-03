@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     
     // Create a single client instance
     let client = Arc::new(reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(100))
         .build()?);
 
     let sample_data = json!({
@@ -85,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
 
     // Create validation requests
-    let num_requests = 1000;
+    let num_requests = 4000;
     let requests: Vec<_> = (0..num_requests)
         .map(|_| ValidationRequest::new_without_field_check(sample_data.clone()))
         .collect();

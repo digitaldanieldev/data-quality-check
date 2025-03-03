@@ -39,6 +39,7 @@ ENTRYPOINT ["/config-producer-proto"]
 # Runtime Stage for load_test
 FROM debian:bookworm-slim AS load_test
 
+RUN ulimit -n 20000
 
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y \

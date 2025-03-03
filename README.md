@@ -168,3 +168,6 @@ make this change permanent:
 
 ## check env vars
 docker compose exec config_producer env
+
+## scale load test
+docker-compose up --scale load_test=3
