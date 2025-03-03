@@ -171,3 +171,8 @@ docker compose exec config_producer env
 
 ## scale load test
 docker-compose up --scale load_test=3
+
+## docker compose
+## config-producer:
+## needs protobuf compiler, can also be installed on system
+docker compose -f docker-compose-config-producer.yml run config_producer

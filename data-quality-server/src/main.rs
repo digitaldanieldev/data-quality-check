@@ -12,7 +12,7 @@ use std::{
 };
 use tokio::net::TcpListener;
 use tokio::runtime::Builder;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 
 use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
 use tracing::{debug, error, info, span, Level};
@@ -29,6 +29,7 @@ type DescriptorMap = Arc<RwLock<HashMap<String, Vec<u8>>>>;
 pub struct AppState {
     descriptor_map: DescriptorMap,
     enable_metrics: bool,
+    semaphore: Arc<Semaphore>, // Semaphore to control concurrency
 }
 
 #[derive(Parser, Debug)]
@@ -57,7 +58,7 @@ fn main() -> Result<(), anyhow::Error> {
     // Dynamically configure the Tokio runtime with the specified number of worker threads
     let runtime = Builder::new_multi_thread()
         .worker_threads(cli_args.worker_threads)
-        .max_blocking_threads(100)
+        .max_blocking_threads(50)
         .enable_all()
         .build()?;
 
@@ -94,6 +95,7 @@ fn main() -> Result<(), anyhow::Error> {
         } else {
             None
         };
+        
         let server_ip = env::var("DATA_QUALITY_SERVER_IP")
             .context("DATA_QUALITY_SERVER_IP environment variable missing")?;
         let server_port = env::var("DATA_QUALITY_SERVER_PORT")
@@ -101,9 +103,13 @@ fn main() -> Result<(), anyhow::Error> {
 
         let server_address = format!("{}:{}", server_ip, server_port);
 
+        // Initialize the semaphore with a limit of concurrent connections
+        let semaphore = Arc::new(Semaphore::new(400));
+
         let app_state = AppState {
             descriptor_map: Arc::new(RwLock::new(HashMap::new())),
             enable_metrics: cli_args.enable_metrics,
+            semaphore, 
         };
 
         let app = Router::new()

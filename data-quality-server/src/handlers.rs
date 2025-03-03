@@ -21,6 +21,18 @@ pub async fn load_descriptor_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoadDescriptorRequest>,
 ) -> impl IntoResponse {
+    // Acquire a permit from the semaphore before proceeding
+    let permit = match state.semaphore.acquire().await {
+        Ok(permit) => permit,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Too many concurrent requests, please try again later".to_string(),
+            )
+                .into_response();
+        }
+    };
+
     let span = span!(Level::INFO, "load_descriptor_handler");
     let _enter = span.enter();
 
@@ -70,6 +82,14 @@ pub async fn validate_json_handler(
     State(state): State<AppState>,
     Json(payload): Json<ValidationRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    // Acquire a permit from the semaphore before proceeding
+    let permit = match state.semaphore.acquire().await {
+        Ok(permit) => permit,
+        Err(_) => {
+            return Err(StatusCode::SERVICE_UNAVAILABLE);
+        }
+    };
+
     let span = span!(Level::INFO, "validate_json_handler");
     let _enter = span.enter();
 
