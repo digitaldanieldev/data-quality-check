@@ -58,7 +58,7 @@ fn main() -> Result<(), anyhow::Error> {
     // Dynamically configure the Tokio runtime with the specified number of worker threads
     let runtime = Builder::new_multi_thread()
         .worker_threads(cli_args.worker_threads)
-        .max_blocking_threads(50)
+        .max_blocking_threads(40)
         .enable_all()
         .build()?;
 
@@ -104,7 +104,7 @@ fn main() -> Result<(), anyhow::Error> {
         let server_address = format!("{}:{}", server_ip, server_port);
 
         // Initialize the semaphore with a limit of concurrent connections
-        let semaphore = Arc::new(Semaphore::new(400));
+        let semaphore = Arc::new(Semaphore::new(110));
 
         let app_state = AppState {
             descriptor_map: Arc::new(RwLock::new(HashMap::new())),

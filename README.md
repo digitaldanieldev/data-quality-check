@@ -176,3 +176,10 @@ docker-compose up --scale load_test=3
 ## config-producer:
 ## needs protobuf compiler, can also be installed on system
 docker compose -f docker-compose-config-producer.yml run config_producer
+
+./load-test -i 8 -s 200 -n 4000 -p 150 -t 60
+./load-test --iterations 8 --semaphore-permits 300 --num-requests 4000 --pool-max-idle-per-host 150 --timeout-secs 60
+
+or 
+
+./load-test
