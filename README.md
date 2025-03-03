@@ -149,3 +149,19 @@ load-test-wget_logs.txt
 exclude folders listed here when using COPY . . in the dockerignore
 ## build 
 docker buildx bake 
+
+# linux ulimit
+## set number of connections a process can open simultaneously
+ulimit -n
+
+increase the limit temporarily for the current session:
+
+ulimit -n 100000
+
+make this change permanent:
+
+    Open /etc/security/limits.conf (you might need root access).
+    Add or modify the following lines:
+
+* soft nofile 100000
+* hard nofile 100000
