@@ -165,3 +165,6 @@ make this change permanent:
 
 * soft nofile 100000
 * hard nofile 100000
+
+## check env vars
+docker compose exec config_producer env

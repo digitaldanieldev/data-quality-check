@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
         let _enter = span.enter();
 
         let proto_schema_input_dir = dotenvy::var("PROTO_SCHEMA_INPUT_DIR")?;
-        let server_ip = dotenvy::var("DATA_QUALITY_SERVER_IP")?;
+        let server_ip = dotenvy::var("DATA_QUALITY_SERVER_IP_HOST")?;
         let server_port = dotenvy::var("DATA_QUALITY_SERVER_PORT")?;
         let server_address = format!("{}:{}", server_ip, server_port);
 

@@ -15,38 +15,43 @@ use tracing_subscriber::FmtSubscriber;
 pub fn load_env_variables() {
     info!("load_env_variables");
 
-    match env::current_exe() {
-        Ok(exe_path) => {
-            debug!("Current executable path: {:?}", exe_path);
+    // Check if we're running in Docker
+    if is_docker() {
+        debug!("Running inside Docker, skipping .env file loading.");
+    } else {
+        match env::current_exe() {
+            Ok(exe_path) => {
+                debug!("Current executable path: {:?}", exe_path);
 
-            if let Some(exe_dir) = exe_path.parent() {
-                let env_file_path = exe_dir.join(".env");
-                debug!("Computed .env file path: {:?}", env_file_path);
+                if let Some(exe_dir) = exe_path.parent() {
+                    let env_file_path = exe_dir.join(".env");
+                    debug!("Computed .env file path: {:?}", env_file_path);
 
-                match from_filename(env_file_path.to_str().unwrap()) {
-                    Ok(_) => {
-                        info!(
-                            "Environment variables loaded successfully from {:?}",
-                            env_file_path
-                        );
+                    match from_filename(env_file_path.to_str().unwrap()) {
+                        Ok(_) => {
+                            info!(
+                                "Environment variables loaded successfully from {:?}",
+                                env_file_path
+                            );
+                        }
+                        Err(e) => {
+                            error!("Failed to load .env file at {:?}: {}", env_file_path, e);
+                        }
                     }
-                    Err(e) => {
-                        error!("Failed to load .env file at {:?}: {}", env_file_path, e);
+
+                    match env::var("PROTO_SCHEMA_INPUT_DIR") {
+                        Ok(value) => info!("PROTO_SCHEMA_INPUT_DIR: {}", value),
+                        Err(_) => {
+                            error!("PROTO_SCHEMA_INPUT_DIR not found in the environment variables.");
+                        }
                     }
+                } else {
+                    error!("Failed to get the executable directory.");
                 }
-
-                match env::var("PROTO_SCHEMA_INPUT_DIR") {
-                    Ok(value) => info!("PROTO_SCHEMA_INPUT_DIR: {}", value),
-                    Err(_) => {
-                        error!("PROTO_SCHEMA_INPUT_DIR not found in the environment variables.");
-                    }
-                }
-            } else {
-                error!("Failed to get the executable directory.");
             }
-        }
-        Err(e) => {
-            error!("Failed to get executable path: {}", e);
+            Err(e) => {
+                error!("Failed to get executable path: {}", e);
+            }
         }
     }
 
@@ -78,4 +83,24 @@ pub fn parse_log_level(log_level: &str) -> Result<Level, anyhow::Error> {
         "trace" => Ok(Level::TRACE),
         _ => Ok(Level::INFO),
     }
+}
+
+use std::fs;
+use std::path::Path;
+
+#[tracing::instrument]
+fn is_docker() -> bool {
+    // Check if the /.dockerenv file exists
+    if Path::new("/.dockerenv").exists() {
+        return true;
+    }
+
+    // Alternatively, check if the /proc/1/cgroup file contains 'docker'
+    if let Ok(content) = fs::read_to_string("/proc/1/cgroup") {
+        if content.contains("docker") {
+            return true;
+        }
+    }
+
+    false
 }

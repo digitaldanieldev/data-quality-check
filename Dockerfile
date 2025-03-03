@@ -22,6 +22,7 @@ RUN cargo build --release
 # Runtime Stage for data_quality_server
 FROM debian:bookworm-slim AS data_quality
 COPY --from=builder /app/target/release/data-quality-server /data-quality-server
+
 ENTRYPOINT ["/data-quality-server"]
 
 # Runtime Stage for config_producer
@@ -32,10 +33,19 @@ RUN apt-get update && apt-get upgrade -y && \
     autoconf libtool m4 protobuf-compiler unzip 
 
 COPY --from=builder /app/target/release/config-producer-proto /config-producer-proto
+
 ENTRYPOINT ["/config-producer-proto"]
 
 # Runtime Stage for load_test
 FROM debian:bookworm-slim AS load_test
 
+
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y \
+    build-essential checkinstall zlib1g-dev \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/target/release/load-test /load-test
+
 ENTRYPOINT ["/load-test"]
