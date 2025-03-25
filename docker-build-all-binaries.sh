@@ -31,7 +31,7 @@ copy_binary() {
     fi
 }
 
-MAX_ATTEMPTS=10
+MAX_ATTEMPTS=20
 ATTEMPT=1
 
 echo "Copying binaries from containers to the output directory..."
