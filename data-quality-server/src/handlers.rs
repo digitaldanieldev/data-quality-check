@@ -21,7 +21,6 @@ pub async fn load_descriptor_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoadDescriptorRequest>,
 ) -> impl IntoResponse {
-    // Acquire a permit from the semaphore before proceeding
     let permit = match state.semaphore.acquire().await {
         Ok(permit) => permit,
         Err(_) => {
@@ -51,7 +50,6 @@ pub async fn load_descriptor_handler(
         }
     };
 
-    // Write lock the RwLock for inserting into the map
     let mut descriptor_map = state.descriptor_map.write().await;
     descriptor_map.insert(file_name.clone(), file_content.clone());
 
@@ -62,11 +60,6 @@ pub async fn load_descriptor_handler(
     )
         .into_response()
 }
-
-
-/////////////////////////////
-// json validation handler //
-////////////////////////////
 
 #[derive(Deserialize)]
 pub struct ValidationRequest {
@@ -82,7 +75,6 @@ pub async fn validate_json_handler(
     State(state): State<AppState>,
     Json(payload): Json<ValidationRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Acquire a permit from the semaphore before proceeding
     let permit = match state.semaphore.acquire().await {
         Ok(permit) => permit,
         Err(_) => {
@@ -97,17 +89,14 @@ pub async fn validate_json_handler(
 
     let json_escaped = payload.json_escaped.unwrap_or(true);
     let json_message = if json_escaped {
-        // The JSON is escaped as a string, so we need to unescape it
         unescape_json(&payload.json.to_string()).map_err(|e| {
             error!("Failed to unescape JSON: {}", e);
             e.to_status_code()
         })?
     } else {
-        // The JSON is already a valid object, so we just use it directly
         payload.json.to_string()
     };
 
-    // Read lock the RwLock to access descriptor_map
     let descriptor_pool = {
         let descriptor_map = state.descriptor_map.read().await;
         match rebuild_descriptor_pool(&descriptor_map) {

@@ -15,7 +15,6 @@ use tracing_subscriber::FmtSubscriber;
 pub fn load_env_variables() {
     info!("load_env_variables");
 
-    // Check if we're running in Docker
     if is_docker() {
         debug!("Running inside Docker, skipping .env file loading.");
     } else {
@@ -90,12 +89,10 @@ use std::path::Path;
 
 #[tracing::instrument]
 fn is_docker() -> bool {
-    // Check if the /.dockerenv file exists
     if Path::new("/.dockerenv").exists() {
         return true;
     }
 
-    // Alternatively, check if the /proc/1/cgroup file contains 'docker'
     if let Ok(content) = fs::read_to_string("/proc/1/cgroup") {
         if content.contains("docker") {
             return true;

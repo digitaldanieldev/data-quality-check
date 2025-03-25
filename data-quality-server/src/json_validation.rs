@@ -14,12 +14,10 @@ use crate::metrics::create_metrics;
 
 pub fn unescape_json(json_string: &str) -> Result<String, AppError> {
     if json_string.starts_with('"') && json_string.ends_with('"') {
-        // If it's escaped (starts and ends with quotes), unescape it
         let unescaped = serde_json::from_str::<String>(json_string)
             .map_err(|e| AppError::JsonUnescapeError(format!("Failed to unescape JSON: {}", e)))?;
         Ok(unescaped)
     } else {
-        // Otherwise, assume it's unescaped and use as-is
         Ok(json_string.to_string())
     }
 }
@@ -36,7 +34,6 @@ pub fn validate_json(
 ) -> Result<(), anyhow::Error> {
     info!("Starting JSON validation process");
 
-    // Metrics setup (if enabled)
     let meter = if enable_metrics {
         Some(global::meter("json-validation-service"))
     } else {
@@ -45,17 +42,14 @@ pub fn validate_json(
 
     let start_time = meter.as_ref().map(|_| Instant::now());
 
-    // Parse the JSON first
     let json_value: JsonValue = serde_json::from_str(json_message).map_err(|e| {
         let error_msg = format!("Failed to parse JSON: {:?}", e);
         error!("{}", error_msg);
         anyhow::anyhow!(error_msg)
     })?;
 
-    // Determine the message name for metrics
     let message_name = definition_name.unwrap_or("only_json").to_string();
 
-    // Metrics: Record request count
     if let Some(ref meter) = meter {
         let (request_counter, _) = create_metrics(meter);
         request_counter.add(
@@ -74,7 +68,6 @@ pub fn validate_json(
         );
     }
 
-    // Metrics: Track duration
     let record_duration = |message_name: &str, field_check_enabled: bool| {
         if let (Some(start_time), Some(ref meter)) = (start_time, &meter) {
             let duration = start_time.elapsed().as_micros();
@@ -98,7 +91,6 @@ pub fn validate_json(
         }
     };
 
-    // Handle JSON validation with or without a definition name
     if let Some(definition_name) = definition_name {
         info!("Starting JSON validation for proto: {}", definition_name);
 
@@ -117,7 +109,6 @@ pub fn validate_json(
 
         info!("Found message descriptor: {:?}", message_descriptor);
 
-        // Populate and serialize the dynamic message
         let mut dynamic_message = DynamicMessage::new(message_descriptor.clone());
         populate_dynamic_message(&mut dynamic_message, &message_descriptor, &json_value).map_err(
             |e| {
@@ -133,7 +124,6 @@ pub fn validate_json(
             anyhow::anyhow!(error_msg)
         })?;
 
-        // Perform field validation if enabled
         if field_check.unwrap_or(false) {
             validate_json_message_content(&json_value, field_name, field_value_check).map_err(
                 |e| {
@@ -146,7 +136,6 @@ pub fn validate_json(
 
         record_duration(&message_name, field_check.unwrap_or(false));
     } else {
-        // Handle "only_json" case
         info!("No definition_name provided. Only parsed JSON successfully.");
 
         if field_check.unwrap_or(false) {

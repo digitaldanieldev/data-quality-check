@@ -17,10 +17,6 @@ use crate::AppState;
 
 type DescriptorMap = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
-/////////////////////
-// load descriptor //
-/////////////////////
-
 #[tracing::instrument]
 pub fn load_descriptor(
     descriptor_pool: &mut DescriptorPool,

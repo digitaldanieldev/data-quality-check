@@ -8,10 +8,9 @@ To use the data-quality-server, start it first, then use the config-producer to 
 
 ```mermaid
 graph LR
-    A[Start Data Quality Server] --> B[Use Config Producer to Push Config]
-    B --> C[Run Tests]
+    A[Start data quality server] --> B[Use config roducer to push config]
+    B --> C[Run JSON tests]
 ```
-
 
 ## Installation
 
@@ -198,11 +197,7 @@ create intermediate file, this could be a message produced by a Kafka consumer
 ```
 echo '{
   "protobuf": "MyMessage",
-  "json": {
-    "key1": "example_value",
-    "key2": 42,
-    "key3": true
-  },
+  "json": '$(cat data/input/test/example.json)' ,
   "json_escaped": false,
   "field_check": true,
   "field_name": "key2",

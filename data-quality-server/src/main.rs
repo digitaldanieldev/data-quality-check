@@ -25,12 +25,11 @@ pub mod protobuf_descriptors;
 
 type DescriptorMap = Arc<RwLock<HashMap<String, Vec<u8>>>>;
 
-// Semaphore to control concurrency
 #[derive(Clone)]
 pub struct AppState {
     descriptor_map: DescriptorMap,
     enable_metrics: bool,
-    semaphore: Arc<Semaphore>, 
+    semaphore: Arc<Semaphore>,
 }
 
 #[derive(Parser, Debug)]
@@ -56,16 +55,13 @@ struct Args {
 fn main() -> Result<(), anyhow::Error> {
     let cli_args: Args = Args::parse();
 
-    // Dynamically configure the Tokio runtime with the specified number of worker threads
     let runtime = Builder::new_multi_thread()
         .worker_threads(cli_args.worker_threads)
         .max_blocking_threads(40)
         .enable_all()
         .build()?;
 
-    // Enter the Tokio runtime
     runtime.block_on(async {
-        // If `json` argument is provided, validate JSON
         if let Some(json_string) = cli_args.json {
             match validate_json(
                 None,
@@ -96,7 +92,7 @@ fn main() -> Result<(), anyhow::Error> {
         } else {
             None
         };
-        
+
         let server_ip = env::var("DATA_QUALITY_SERVER_IP")
             .context("DATA_QUALITY_SERVER_IP environment variable missing")?;
         let server_port = env::var("DATA_QUALITY_SERVER_PORT")
@@ -104,13 +100,12 @@ fn main() -> Result<(), anyhow::Error> {
 
         let server_address = format!("{}:{}", server_ip, server_port);
 
-        // Initialize the semaphore with a limit of concurrent connections
         let semaphore = Arc::new(Semaphore::new(110));
 
         let app_state = AppState {
             descriptor_map: Arc::new(RwLock::new(HashMap::new())),
             enable_metrics: cli_args.enable_metrics,
-            semaphore, 
+            semaphore,
         };
 
         let app = Router::new()
@@ -120,7 +115,7 @@ fn main() -> Result<(), anyhow::Error> {
 
         let tcp_listener_address: SocketAddr = format!("{}", server_address)
             .parse::<SocketAddr>()
-            .map_err(|e| anyhow::anyhow!("Failed to parse SocketAddr: {}", e))?; // Use anyhow for error handling
+            .map_err(|e| anyhow::anyhow!("Failed to parse SocketAddr: {}", e))?;
 
         info!(
             "Listening for descriptor loading and JSON validation on {:?}",
