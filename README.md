@@ -235,7 +235,7 @@ To install Rust and Cargo, you can use the official Rust installation script, `r
 
 Run the following command in a terminal to install Rust:
 
-`curl --proto `=https` --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 
 After installation, configure your current shell to use Rust:
 
