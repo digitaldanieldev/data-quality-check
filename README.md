@@ -1,4 +1,4 @@
-# Data-quality-check
+# Data Quality Check
 
 This is a Rust-based server designed for handling protocol buffer (protobuf) descriptors and JSON validation. It exposes endpoints for loading protobuf descriptors and validating JSON against these descriptors. The server is built using the Axum framework for asynchronous web servers and Tokio for concurrency.
 
@@ -8,8 +8,9 @@ To use the data-quality-server, start it first, then use the config-producer to 
 
 ```mermaid
 graph LR
-    A[Start data quality server] --> B[Use config roducer to push config]
+    A[Start data quality server] --> B[Use config producer to push config]
     B --> C[Run JSON tests]
+
 ```
 
 ## Installation
@@ -253,7 +254,7 @@ cargo build --release
 ```
 
 #### Build binaries using Docker
-If you don't want to install Rust an Cargo on your system you use an integrated builder-image.
+If you don't want to install Rust and Cargo on your system you can use an integrated builder-image.
 run:
 ```
 docker-build-all-binaries.sh
@@ -273,7 +274,7 @@ Verify Docker daemon connectivity:
 
 `curl --unix-socket /var/run/docker.sock http://localhost/_ping; echo`
 
-#### To many connections - error?
+#### Too many connections - error?
 
 set number of connections a process can open simultaneously
 ```
