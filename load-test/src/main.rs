@@ -6,6 +6,7 @@ use serde_json;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::Read;
+use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio;
@@ -13,7 +14,6 @@ use tokio::main;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
 use tracing::{info, span, Level};
-use std::io::{self, Write};
 
 use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
 
@@ -43,6 +43,22 @@ struct Args {
     /// Timeout for the client in seconds
     #[clap(short, long, default_value_t = 100)]
     timeout_secs: u64,
+
+    /// Option to generate load test configurations with custom parameters
+    #[clap(long, action = clap::ArgAction::SetTrue, default_value_t = false)]
+    generate_config: bool,
+
+    /// Range for semaphore_permits (start,end,step)
+    #[clap(long, value_parser = parse_range)]
+    semaphore_permits_range: Option<(usize, usize, usize)>,
+
+    /// Range for pool_max_idle_per_host (start,end,step)
+    #[clap(long, value_parser = parse_range)]
+    pool_max_idle_per_host_range: Option<(usize, usize, usize)>,
+
+    /// Range for num_requests (start,end,step)
+    #[clap(long, value_parser = parse_range)]
+    num_requests_range: Option<(usize, usize, usize)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,12 +109,21 @@ impl ValidationRequest {
     }
 }
 
-fn generate_configs() -> Vec<LoadTestConfig> {
+fn generate_configs(
+    semaphore_range: Option<(usize, usize, usize)>,
+    pool_range: Option<(usize, usize, usize)>,
+    num_requests_range: Option<(usize, usize, usize)>,
+) -> Vec<LoadTestConfig> {
     let mut configs = Vec::new();
 
-    for semaphore_permits in (10..=200).step_by(10) {
-        for pool_max_idle_per_host in (10..=100).step_by(10) {
-            for num_requests in (500..=5000).step_by(100) {
+    let (semaphore_start, semaphore_end, semaphore_step) = semaphore_range.unwrap_or((10, 200, 10));
+    let (pool_start, pool_end, pool_step) = pool_range.unwrap_or((10, 100, 10));
+    let (num_requests_start, num_requests_end, num_requests_step) =
+        num_requests_range.unwrap_or((500, 5000, 100));
+
+    for semaphore_permits in (semaphore_start..=semaphore_end).step_by(semaphore_step) {
+        for pool_max_idle_per_host in (pool_start..=pool_end).step_by(pool_step) {
+            for num_requests in (num_requests_start..=num_requests_end).step_by(num_requests_step) {
                 configs.push(LoadTestConfig {
                     semaphore_permits,
                     num_requests,
@@ -112,6 +137,25 @@ fn generate_configs() -> Vec<LoadTestConfig> {
     configs
 }
 
+fn parse_range(input: &str) -> Result<(usize, usize, usize), String> {
+    let parts: Vec<&str> = input.split(',').collect();
+    if parts.len() != 3 {
+        return Err(format!("Invalid range format: {}", input));
+    }
+
+    let start: usize = parts[0]
+        .parse()
+        .map_err(|_| format!("Invalid start value: {}", parts[0]))?;
+    let end: usize = parts[1]
+        .parse()
+        .map_err(|_| format!("Invalid end value: {}", parts[1]))?;
+    let step: usize = parts[2]
+        .parse()
+        .map_err(|_| format!("Invalid step value: {}", parts[2]))?;
+
+    Ok((start, end, step))
+}
+
 fn save_configs_to_file(configs: Vec<LoadTestConfig>, file_path: &str) -> io::Result<()> {
     let mut file = File::create(file_path)?;
     let json_str = serde_json::to_string_pretty(&configs)?;
@@ -119,7 +163,6 @@ fn save_configs_to_file(configs: Vec<LoadTestConfig>, file_path: &str) -> io::Re
     writeln!(file, "{}", json_str)?;
     Ok(())
 }
-
 
 async fn send_request_with_retry(
     client: &Client,
@@ -286,29 +329,36 @@ async fn run_load_test(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli_args = Args::parse();
-    let configs = generate_configs();
 
-    let file_path = "load_test_configs.json";
-    save_configs_to_file(configs, file_path)?;
-
-    println!("Configurations saved to {}", file_path);
-
-    let file_path = "load_test_configs.json";
-    let mut file = File::open(file_path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-
-    let test_configs: Vec<LoadTestConfig> = serde_json::from_str(&contents)?;
-
-    for config in test_configs {
-        info!("Running load test with config: {:?}", config);
-        let (total_requests, total_duration) = run_load_test(cli_args.clone(), &config).await?;
-        info!(
-            "Completed load test - Total requests: {}, Duration: {:?}",
-            total_requests, total_duration
+    if cli_args.generate_config {
+        let configs = generate_configs(
+            cli_args.semaphore_permits_range,
+            cli_args.pool_max_idle_per_host_range,
+            cli_args.num_requests_range,
         );
 
-        info!("");
+        let file_path = "load_test_configs.json";
+        save_configs_to_file(configs, file_path)?;
+
+        println!("Configurations saved to {}", file_path);
+    } else {
+        let file_path = "load_test_configs.json";
+        let mut file = File::open(file_path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+
+        let test_configs: Vec<LoadTestConfig> = serde_json::from_str(&contents)?;
+
+        for config in test_configs {
+            info!("Running load test with config: {:?}", config);
+            let (total_requests, total_duration) = run_load_test(cli_args.clone(), &config).await?;
+            info!(
+                "Completed load test - Total requests: {}, Duration: {:?}",
+                total_requests, total_duration
+            );
+
+            info!("");
+        }
     }
 
     Ok(())

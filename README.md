@@ -4,6 +4,15 @@ This is a Rust-based server designed for handling protocol buffer (protobuf) des
 
 The tool enables the validation and checking of JSON data. You can check if a message is valid JSON, validate the presence or absence of a certain value for a specific key, and expose metrics for further analysis using tools like Prometheus and Grafana. The `data-quality-server` can be used either as a binary injected into data pipelines or as a standalone server used by multiple processes or pipelines for JSON validation.
 
+To use the data-quality-server, start it first, then use the config-producer to upload the necessary configuration. Once the configuration is uploaded, you can proceed with the tests.
+
+```mermaid
+graph LR
+    A[Start Data Quality Server] --> B[Use Config Producer to Push Config]
+    B --> C[Run Tests]
+```
+
+
 ## Installation
 
 ### Assumptions:
@@ -21,6 +30,7 @@ Copy and rename the `.env` file, ensuring it is in the directory where your bina
 The `data-quality-server` can be used in two modes:
 - **Server Mode**
 - **Standalone Binary Mode**
+
 
 ### Server Mode
 
@@ -103,24 +113,36 @@ The number of requests to send in each iteration. *Default: `2000`*
 The maximum number of idle connections per host in the HTTP client pool. *Default: `100`*
 
 **--timeout_secs**  
-The timeout duration for each HTTP request. *Default: `100`*
+The timeout duration for each HTTP request, in seconds. *Default: `100`*
+
+**--generate_config**  
+A flag to generate load test configurations with custom parameters. When set to `true`, it triggers the generation of configurations. *Default: `false`*
+
+**--semaphore_permits_range**  
+A range for `semaphore_permits` in the format `start,end,step`. This will override the default value and generate multiple configurations based on the provided range. For example, `--semaphore_permits_range 10,200,10` will create configurations with semaphore permits ranging from 10 to 200, stepping by 10.
+
+**--pool_max_idle_per_host_range**  
+A range for `pool_max_idle_per_host` in the format `start,end,step`. This will override the default value and generate multiple configurations based on the provided range. For example, `--pool_max_idle_per_host_range 10,100,10` will create configurations with idle connections per host ranging from 10 to 100, stepping by 10.
+
+**--num_requests_range**  
+A range for `num_requests` in the format `start,end,step`. This will override the default value and generate multiple configurations based on the provided range. For example, `--num_requests_range 500,5000,100` will create configurations with the number of requests ranging from 500 to 5000, stepping by 100.
 
 
+#### Single test
 ```
 ./load-test --iterations 3 --semaphore_permits 200 --num_requests 1000
 ```
-or run 
+#### Test multiple settings
+You can customize the ranges for semaphore_permits, pool_max_idle_per_host, and num_requests through the CLI when generating configurations. For example:
+```
+./load-test --generate-config --semaphore-permits-range 10,100,10 --pool-max-idle-per-host-range 20,80,20 --num-requests-range 1000,3000,500
+```
+This will create a file in your path (load_test_configs.json) by iterating over your defined range of parameters.
 
+Running the load test will now automatically load the generated config file.
 ```
 ./load-test
 ```
-This will create a file in your path (load_test_configs.json) by generating a list of different configurations for load testing, iterating over specific ranges of parameters. It combines various settings to create multiple configurations, including:
-
-- **`semaphore_permits`**: Varies from 10 to 200, stepping by 10.
-- **`pool_max_idle_per_host`**: Varies from 10 to 100, stepping by 10.
-- **`num_requests`**: Varies from 500 to 5000, stepping by 100.
-- **`timeout_secs`**: Set to a constant value of 60 for all configurations.
-
 
 ## Examples:
 
