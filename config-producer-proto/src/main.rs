@@ -1,3 +1,5 @@
+/* Licensed under the AGPL-3.0 License: https://www.gnu.org/licenses/agpl-3.0.html */
+
 use anyhow::Result;
 use base64;
 use clap::Parser;

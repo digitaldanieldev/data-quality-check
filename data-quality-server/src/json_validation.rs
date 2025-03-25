@@ -1,12 +1,11 @@
-use anyhow::Result;
+/* Licensed under the AGPL-3.0 License: https://www.gnu.org/licenses/agpl-3.0.html */
 
+use anyhow::Result;
 use dynamic_message::{populate_dynamic_message, serialize_dynamic_message};
 use opentelemetry::{global, KeyValue};
-
 use prost_reflect::{DescriptorPool, DynamicMessage};
 use serde_json::Value as JsonValue;
 use std::time::Instant;
-
 use tracing::{debug, error, info, span, Level};
 
 use crate::app_error::AppError;

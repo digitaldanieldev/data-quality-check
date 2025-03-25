@@ -1,3 +1,5 @@
+/* Licensed under the AGPL-3.0 License: https://www.gnu.org/licenses/agpl-3.0.html */
+
 use anyhow::{anyhow, Context, Result};
 use axum::{extract::Json, http::StatusCode, response::IntoResponse};
 use serde_json::json;

@@ -1,3 +1,5 @@
+/* Licensed under the AGPL-3.0 License: https://www.gnu.org/licenses/agpl-3.0.html */
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use dynamic_message::{serialize_dynamic_message, populate_dynamic_message};
 use prost_reflect::{DescriptorPool, DynamicMessage};

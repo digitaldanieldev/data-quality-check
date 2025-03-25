@@ -1,3 +1,5 @@
+/* Licensed under the AGPL-3.0 License: https://www.gnu.org/licenses/agpl-3.0.html */
+
 use crate::protobuf_descriptors::rebuild_descriptor_pool;
 use axum::{
     extract::{Json, State},

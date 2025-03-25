@@ -1,3 +1,5 @@
+/* Licensed under the AGPL-3.0 License: https://www.gnu.org/licenses/agpl-3.0.html */
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Bencher};
 use dynamic_message::{string_split_whitespace, string_split_whitespace_regex, LONG_STRING, SHORT_STRING};
 
