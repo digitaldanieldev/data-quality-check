@@ -1,5 +1,6 @@
 **/target/
+**/docker-builds/
 **/Cargo.lock
 .env
-.idea
-.vscode
+.idea/
+.vscode/

@@ -1,0 +1,37 @@
+services:
+  config_producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: config_producer
+    container_name: config_producer_proto
+    restart: no
+    volumes:
+      - ./docker-builds:/docker-builds
+    environment:
+      - RUST_LOG=debug
+  
+
+  data_quality:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: data_quality
+    container_name: data_quality_server
+    restart: no
+    volumes:
+      - ./docker-builds:/docker-builds
+    environment:
+      - RUST_LOG=debug
+
+  load_test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: load_test
+    container_name: load_test_service
+    restart: no
+    volumes:
+      - ./docker-builds:/docker-builds
+    environment:
+      - RUST_LOG=debug

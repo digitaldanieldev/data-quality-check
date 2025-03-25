@@ -251,6 +251,15 @@ git clone https://github.com/data-quality-check.git
 cd data-quality-check
 cargo build --release
 ```
+
+#### Build binaries using Docker
+If you don't want to install Rust an Cargo on your system you use an integrated builder-image.
+run:
+```
+docker-build-all-binaries.sh
+```
+and check the docker-builds folder
+
 ### Troubleshooting:
 #### Can't connect? 
 Check your firewall settings
@@ -264,7 +273,7 @@ Verify Docker daemon connectivity:
 
 `curl --unix-socket /var/run/docker.sock http://localhost/_ping; echo`
 
-#### To many connections error?
+#### To many connections - error?
 
 set number of connections a process can open simultaneously
 ```
