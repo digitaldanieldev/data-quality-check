@@ -12,11 +12,9 @@ RUN apt-get update && apt-get upgrade -y && \
     software-properties-common sudo unzip x11-utils xclip xdg-desktop-portal xdg-utils zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up build directory and copy all files
 WORKDIR /app
 COPY . .
 
-# Build both binaries
 RUN cargo build --release
 
 # Runtime Stage for data_quality_server

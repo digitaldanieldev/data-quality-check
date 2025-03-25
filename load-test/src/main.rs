@@ -128,14 +128,14 @@ async fn send_request_with_retry(
 ) -> Result<reqwest::Response, reqwest::Error> {
     let mut retries = 0;
     let max_retries = 5;
-    let backoff_duration = Duration::from_secs(1); // Initial backoff
+    let backoff_duration = Duration::from_secs(1);
 
     loop {
         let response = client.post(url).json(request).send().await;
 
         match response {
             Ok(res) => {
-                return Ok(res); // Successfully fetched data
+                return Ok(res);
             }
             Err(e) if retries < max_retries => {
                 retries += 1;
@@ -144,10 +144,10 @@ async fn send_request_with_retry(
                     "Request failed, retrying in {:?}. Error: {}",
                     backoff_time, e
                 );
-                sleep(backoff_time).await; // Exponential backoff
+                sleep(backoff_time).await;
             }
             Err(e) => {
-                return Err(e); // Return the error if max retries are exceeded
+                return Err(e);
             }
         }
     }
@@ -198,10 +198,9 @@ async fn run_load_test(
     let mut tasks = Vec::new();
 
     for i in 1..=cli_args.iterations {
-        // Create a span for each iteration with the configuration
         let iteration_span =
             span!(Level::INFO, "load_test_iteration", iteration = i, config = ?config);
-        let _enter = iteration_span.enter(); // Enter the span for this iteration
+        let _enter = iteration_span.enter();
 
         let client = Arc::clone(&client);
         let server_address = server_address.clone();
@@ -240,7 +239,6 @@ async fn run_load_test(
                 duration
             );
 
-            // Log an empty line after each iteration log block
             info!("");
 
             (requests.len(), duration)
@@ -280,7 +278,6 @@ async fn run_load_test(
         rps
     );
 
-    // Log an empty line after the overall result block
     info!("");
 
     Ok((total_requests, total_duration))
@@ -289,22 +286,18 @@ async fn run_load_test(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli_args = Args::parse();
-    // Generate configurations
     let configs = generate_configs();
 
-    // Save the generated configurations to a file
     let file_path = "load_test_configs.json";
     save_configs_to_file(configs, file_path)?;
 
     println!("Configurations saved to {}", file_path);
 
-    // Read the configuration file (assuming it's in the current working directory)
     let file_path = "load_test_configs.json";
     let mut file = File::open(file_path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
-    // Parse the JSON into a Vec<LoadTestConfig>
     let test_configs: Vec<LoadTestConfig> = serde_json::from_str(&contents)?;
 
     for config in test_configs {
@@ -315,7 +308,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             total_requests, total_duration
         );
 
-        // Log an empty line after the block of logs for this config
         info!("");
     }
 

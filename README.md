@@ -1,61 +1,146 @@
-# Data-quality-server
+# Data-quality-check
 
-todo:
-use criterion for benchmarking
+This is a Rust-based server designed for handling protocol buffer (protobuf) descriptors and JSON validation. It exposes endpoints for loading protobuf descriptors and validating JSON against these descriptors. The server is built using the Axum framework for asynchronous web servers and Tokio for concurrency.
 
-## Enable metrics
-./data-quality-server --enable-metrics
-./data-quality-server --worker-threads 4 --enable-metrics
+The tool enables the validation and checking of JSON data. You can check if a message is valid JSON, validate the presence or absence of a certain value for a specific key, and expose metrics for further analysis using tools like Prometheus and Grafana. The `data-quality-server` can be used either as a binary injected into data pipelines or as a standalone server used by multiple processes or pipelines for JSON validation.
+
+## Installation
+
+### Assumptions:
+- **Operating System**: Linux
+- **Docker**: Installed
+
+### Download:
+You can download the latest binaries from the releases section.
+
+#### Environment Variables:
+Copy and rename the `.env` file, ensuring it is in the directory where your binaries are used. Make sure you configure the variables to match your environment.
+
+## Usage
+
+The `data-quality-server` can be used in two modes:
+- **Server Mode**
+- **Standalone Binary Mode**
+
+### Server Mode
+
+To start the server, run:
+
+```bash
+./data-quality-server
+```
 
 
-# Config-producer-proto
+##### Options:
 
-# make sure protobuf compiler is installed
-# firewall on system!
-# use docker!
+**--enable-metrics**  
+Enable metrics collection. *Default: `false`*  
+`./data-quality-server --enable-metrics`
 
-apt -y install protobuf-compiler
+**--worker-threads**  
+Set the number of worker threads for the server. *Default: `2`*  
+`./data-quality-server --worker-threads 4 --enable-metrics`
 
-## Run Once (One-time processing)
+**--log-level**  
+Set the log level for the server. Options include `debug`, `info`, `warn`, `error`. *Default: `info`*  
+`./data-quality-server --worker-threads 4 --enable-metrics --log-level info`
 
-This will process the .proto files and send them to the server once.
-
-./config-producer-proto
-
-## Run the program in a loop.
-
-Check for .proto file updates every 30 seconds.
-./config-producer-proto --loop --interval 30
+**--json**  
+Provide a JSON string for validation in a standalone binary mode. *Default: `None`*  
+`./data-quality-server --json '{"key1": "value1", "key2": 42}'`
 
 
-## check if message is valid json
-./data-quality-server --json '{"key1": "value1", "key2": 42}'
+When running the binary in this manner, no web server is started. This enables you to use data-quality-server in pipelines where no further network connectivity is possible or needed.
 
-## enable / disable logging / set level as user
-## set metrics collection interval
 
-## Check is a message is valid JSON - test success no protobuf
-curl -X POST http://localhost:8080/validate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "json": "{\"key1\": \"example_value\", \"key2\": 42, \"key3\": true}"  }'
+### Config-producer-proto
+After starting the data-quality-server, you need to upload compiled protobuf definitions. This requires the **protobuf-compiler** and its dependencies installed. Alternatively, you can use Docker to run the config-producer-proto:
 
-## ## Check if JSON can be serialized using MyMessage protobuf definition - test success protobuf
-curl -X POST http://localhost:8080/validate \
-  -H "Content-Type: application/json" \
-  -d '{
+Config-producer-proto can also be built and used using:
+```
+docker compose -f docker-compose-config-producer.yml run config_producer
+```
+This will build and run a container containing all the needed dependencies. 
+
+##### Compile protobuf and upload
+Check the configured folder for protobuf definitions, compile them, and upload them to the data-quality-server
+
+`./config-producer-proto`
+
+##### Options:
+
+**--loop**  
+Enable looping to check for .proto file updates. *Default: `false`*  
+`./config-producer-proto --loop --interval 30`
+
+**--interval**  
+Set the interval (in seconds) to check for .proto file updates. *Default: `30`*  
+`./config-producer-proto --loop --interval 30`
+
+**--log-level**  
+Set the log level for the application. Options include `debug`, `info`, `warn`, `error`. *Default: `info`*  
+`./config-producer-proto --loop --interval 30 --log-level info`
+
+
+### Load test
+Using this tool an optimal configuration can be found for the settings available in data quality server.
+
+##### Options:
+
+**--log_level**  
+The logging level for the application. Options include `debug`, `info`, `warn`, `error`. *Default: `info`*
+
+**--iterations**  
+The number of times to repeat the load test. *Default: `1`*
+
+**--semaphore_permits**  
+The number of concurrent requests that can be made at once. *Default: `100`*
+
+**--num_requests**  
+The number of requests to send in each iteration. *Default: `2000`*
+
+**--pool_max_idle_per_host**  
+The maximum number of idle connections per host in the HTTP client pool. *Default: `100`*
+
+**--timeout_secs**  
+The timeout duration for each HTTP request. *Default: `100`*
+
+
+```
+./load-test --iterations 3 --semaphore_permits 200 --num_requests 1000
+```
+or run 
+
+```
+./load-test
+```
+This will create a file in your path (load_test_configs.json) by generating a list of different configurations for load testing, iterating over specific ranges of parameters. It combines various settings to create multiple configurations, including:
+
+- **`semaphore_permits`**: Varies from 10 to 200, stepping by 10.
+- **`pool_max_idle_per_host`**: Varies from 10 to 100, stepping by 10.
+- **`num_requests`**: Varies from 500 to 5000, stepping by 100.
+- **`timeout_secs`**: Set to a constant value of 60 for all configurations.
+
+
+## Examples:
+
+Check if JSON can be serialized using the protobuf definition MyMessage and validate that field with key2 contains the number 42
+
+##### curl - json
+```
+curl -X POST http://192.168.178.106:8080/validate   -H "Content-Type: application/json"   -d '{
     "protobuf": "MyMessage", 
-    "json": "{\"key1\": \"example_value\", \"key2\": 42, \"key3\": true}" }'
+    "json": {"key1": "example_value", "key2": 42, "key3": true}, 
+    "json_escaped": false,
+    "field_check": true,
+    "field_name": "key2",
+    "field_value_check": 42
+  }'
+```
 
-192.168.90.169
-
-curl -X POST http://192.168.90.169:8080/validate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "protobuf": "MyMessage", 
-    "json": "{\"key1\": \"example_value\", \"key2\": 42, \"key3\": true}" }'
-## Check if JSON can be serialized using MyMessage protobuf definition and validate that field key2 contains the number 42 - test success protobuf with added field validation
-curl -X POST http://localhost:8080/validate \
+##### curl - escaped json
+```
+curl -X POST http://192.168.178.106:8080/validate \
   -H "Content-Type: application/json" \
   -d '{
     "protobuf": "MyMessage", 
@@ -64,35 +149,10 @@ curl -X POST http://localhost:8080/validate \
     "field_check": true,
     "field_name": "key2",
     "field_value_check": 42  }'
+```
 
-curl -X POST http://192.168.5.246:8081/validate   -H "Content-Type: application/json"   -d '{
-    "protobuf": "MyMessage", 
-    "json": {"key1": "example_value", "key2": 42, "key3": true}, 
-    "json_escaped": false,
-    "field_check": true,
-    "field_name": "key2",
-    "field_value_check": 42
-  }'
-
-curl -X POST http://localhost:8080/validate \
-    -H "Content-Type: application/json" \
-    -d '{
-        "protobuf": "MyMessage",
-        "json": '"$(cat data.json)"',
-        "json_escaped": false,
-        "field_check": true,
-        "field_name": "key2",
-        "field_value_check": 42
-    }'
-
-with data.json:
-{
-    "key1": "example_value",
-    "key2": 42,
-    "key3": true
-}
-
-## wget
+##### wget
+```
 wget --quiet \
      --method=POST \
      --header="Content-Type: application/json" \
@@ -108,78 +168,106 @@ wget --quiet \
          "field_name": "key2",
          "field_value_check": 42
      }' \
-     -O - http://localhost:8080/validate
+     -O - http://192.168.178.106:8080/validate
+```
 
-## httpie
-http POST http://localhost:8080/validate \
-    Content-Type:application/json \
-    protobuf="MyMessage" \
-    json:='{
-        "key1": "example_value",
-        "key2": 42,
-        "key3": true
-    }' \
-    json_escaped:=false \
-    field_check:=true \
-    field_name="key2" \
-    field_value_che
-    
-# tests
+### pipeline integration
+create intermediate file, this could be a message produced by a Kafka consumer 
+```
+echo '{
+  "protobuf": "MyMessage",
+  "json": {
+    "key1": "example_value",
+    "key2": 42,
+    "key3": true
+  },
+  "json_escaped": false,
+  "field_check": true,
+  "field_name": "key2",
+  "field_value_check": 42
+}' > request.json
+```
 
-## bash
-./load-test.sh --curl
-SERVER_IP=192.168.178.106 SERVER_PORT=8080 ./load-test.sh --curl
-./load-test.sh --wget
-SERVER_IP=192.168.178.106 SERVER_PORT=8080 ./load-test.sh --wget
+##### curl
+```
+curl -X POST http://192.168.178.106:8080/validate \
+  -H "Content-Type: application/json" \
+  -d @request.json
+```
 
-## docker-compose
-docker-compose up load-test-curl
+##### httpie
+```
+http --verbose POST 192.168.178.106:8080/validate @request.json
+```
+
+##### wget
+```
+wget --quiet \
+     --method=POST \
+     --header="Content-Type: application/json" \
+     --body-file=request.json \
+     -O - http://192.168.178.106:8080/validate
+```
 
 
-docker-compose up load-test-wget
-docker-compose logs load-test-wget > wget_logs.txt
-./requests-per-second.sh
+### Build yourself:
+Data-quality-check is written in Rust. If you want to build it yourself, you need to have Rust and Cargo installed on your system.
 
-docker-compose up load-test-wget --scale load-test-wget=5
+#### Installing Rust and Cargo
+To install Rust and Cargo, you can use the official Rust installation script, `rustup`.
 
-load-test-wget_logs.txt
+Run the following command in a terminal to install Rust:
 
-# docker
-## dockerignore
-exclude folders listed here when using COPY . . in the dockerignore
-## build 
-docker buildx bake 
+`curl --proto `=https` --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 
-# linux ulimit
-## set number of connections a process can open simultaneously
+After installation, configure your current shell to use Rust:
+
+`source $HOME/.cargo/env`
+
+Verify the installation by checking the version of Rust and Cargo:
+
+`rustc --version`
+`cargo --version`
+
+```
+git clone https://github.com/data-quality-check.git
+cd data-quality-check
+cargo build --release
+```
+### Troubleshooting:
+#### Can't connect? 
+Check your firewall settings
+#### Check Docker Service
+Ensure Docker service is running:
+
+`sudo systemctl status docker`
+
+#### Check Docker Daemon Socket
+Verify Docker daemon connectivity:
+
+`curl --unix-socket /var/run/docker.sock http://localhost/_ping; echo`
+
+#### To many connections error?
+
+set number of connections a process can open simultaneously
+```
 ulimit -n
-
+```
 increase the limit temporarily for the current session:
-
+```
 ulimit -n 100000
-
-make this change permanent:
-
-    Open /etc/security/limits.conf (you might need root access).
-    Add or modify the following lines:
-
+```
+make this change permanent, open
+```
+/etc/security/limits.conf
+```
+Add or modify the following lines:
+```
 * soft nofile 100000
 * hard nofile 100000
+```
 
-## check env vars
+#### Check env vars in container
+```
 docker compose exec config_producer env
-
-## scale load test
-docker-compose up --scale load_test=3
-
-## docker compose
-## config-producer:
-## needs protobuf compiler, can also be installed on system
-docker compose -f docker-compose-config-producer.yml run config_producer
-
-./load-test -i 8 -s 200 -n 4000 -p 150 -t 60
-./load-test --iterations 8 --semaphore-permits 300 --num-requests 4000 --pool-max-idle-per-host 150 --timeout-secs 60
-
-or 
-
-./load-test
+```

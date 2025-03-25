@@ -25,11 +25,12 @@ pub mod protobuf_descriptors;
 
 type DescriptorMap = Arc<RwLock<HashMap<String, Vec<u8>>>>;
 
+// Semaphore to control concurrency
 #[derive(Clone)]
 pub struct AppState {
     descriptor_map: DescriptorMap,
     enable_metrics: bool,
-    semaphore: Arc<Semaphore>, // Semaphore to control concurrency
+    semaphore: Arc<Semaphore>, 
 }
 
 #[derive(Parser, Debug)]
