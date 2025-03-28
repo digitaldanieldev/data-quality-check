@@ -9,7 +9,7 @@ services:
     volumes:
       - ./docker-builds:/docker-builds
     environment:
-      - RUST_LOG=debug
+      - RUST_LOG=info
   
 
   data_quality:
@@ -22,7 +22,7 @@ services:
     volumes:
       - ./docker-builds:/docker-builds
     environment:
-      - RUST_LOG=debug
+      - RUST_LOG=info
 
   load_test:
     build:
@@ -34,4 +34,4 @@ services:
     volumes:
       - ./docker-builds:/docker-builds
     environment:
-      - RUST_LOG=debug
+      - RUST_LOG=info

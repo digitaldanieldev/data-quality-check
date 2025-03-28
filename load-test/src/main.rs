@@ -12,10 +12,9 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio;
-use tokio::main;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
-use tracing::{info, span, Level};
+use tracing::{debug, error, info, span, trace, warn, Level};
 
 use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
 
@@ -111,11 +110,53 @@ impl ValidationRequest {
     }
 }
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let cli_args = Args::parse();
+
+    if cli_args.generate_config {
+        info!("Generating load test configurations.");
+        let configs = generate_configs(
+            cli_args.semaphore_permits_range,
+            cli_args.pool_max_idle_per_host_range,
+            cli_args.num_requests_range,
+        );
+
+        let file_path = "load_test_configs.json";
+        save_configs_to_file(configs, file_path)?;
+
+        println!("Configurations saved to {}", file_path);
+    } else {
+        info!("Loading load test configurations from file.");
+        let file_path = "load_test_configs.json";
+        let mut file = File::open(file_path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+
+        let test_configs: Vec<LoadTestConfig> = serde_json::from_str(&contents)?;
+
+        for config in test_configs {
+            info!("Running load test with config: {:?}", config);
+            let (total_requests, total_duration) = run_load_test(cli_args.clone(), &config).await?;
+            info!(
+                "Completed load test - Total requests: {}, Duration: {:?}",
+                total_requests, total_duration
+            );
+
+            info!("");
+        }
+    }
+
+    Ok(())
+}
+
 fn generate_configs(
     semaphore_range: Option<(usize, usize, usize)>,
     pool_range: Option<(usize, usize, usize)>,
     num_requests_range: Option<(usize, usize, usize)>,
 ) -> Vec<LoadTestConfig> {
+    trace!("Generating load test configurations.");
+
     let mut configs = Vec::new();
 
     let (semaphore_start, semaphore_end, semaphore_step) = semaphore_range.unwrap_or((10, 200, 10));
@@ -136,12 +177,17 @@ fn generate_configs(
         }
     }
 
+    trace!("Generated {} configurations.", configs.len());
+
     configs
 }
 
 fn parse_range(input: &str) -> Result<(usize, usize, usize), String> {
+    trace!("Parsing range from input: {}", input);
+
     let parts: Vec<&str> = input.split(',').collect();
     if parts.len() != 3 {
+        error!("Invalid range format: {}", input);
         return Err(format!("Invalid range format: {}", input));
     }
 
@@ -155,53 +201,17 @@ fn parse_range(input: &str) -> Result<(usize, usize, usize), String> {
         .parse()
         .map_err(|_| format!("Invalid step value: {}", parts[2]))?;
 
+    trace!("Parsed range: start={}, end={}, step={}", start, end, step);
+
     Ok((start, end, step))
-}
-
-fn save_configs_to_file(configs: Vec<LoadTestConfig>, file_path: &str) -> io::Result<()> {
-    let mut file = File::create(file_path)?;
-    let json_str = serde_json::to_string_pretty(&configs)?;
-
-    writeln!(file, "{}", json_str)?;
-    Ok(())
-}
-
-async fn send_request_with_retry(
-    client: &Client,
-    url: &str,
-    request: &ValidationRequest,
-) -> Result<reqwest::Response, reqwest::Error> {
-    let mut retries = 0;
-    let max_retries = 5;
-    let backoff_duration = Duration::from_secs(1);
-
-    loop {
-        let response = client.post(url).json(request).send().await;
-
-        match response {
-            Ok(res) => {
-                return Ok(res);
-            }
-            Err(e) if retries < max_retries => {
-                retries += 1;
-                let backoff_time = backoff_duration * 2_u32.pow(retries);
-                eprintln!(
-                    "Request failed, retrying in {:?}. Error: {}",
-                    backoff_time, e
-                );
-                sleep(backoff_time).await;
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-    }
 }
 
 async fn run_load_test(
     cli_args: Args,
     config: &LoadTestConfig,
 ) -> Result<(usize, Duration), Box<dyn std::error::Error + Send + Sync>> {
+    trace!("Starting load test with configuration: {:?}", config);
+
     let log_level = parse_log_level(&cli_args.log_level)?;
     let _ = load_logging_config(log_level);
     load_env_variables();
@@ -328,40 +338,51 @@ async fn run_load_test(
     Ok((total_requests, total_duration))
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let cli_args = Args::parse();
+fn save_configs_to_file(configs: Vec<LoadTestConfig>, file_path: &str) -> io::Result<()> {
+    trace!("Saving configurations to file: {}", file_path);
 
-    if cli_args.generate_config {
-        let configs = generate_configs(
-            cli_args.semaphore_permits_range,
-            cli_args.pool_max_idle_per_host_range,
-            cli_args.num_requests_range,
-        );
+    let mut file = File::create(file_path)?;
+    let json_str = serde_json::to_string_pretty(&configs)?;
 
-        let file_path = "load_test_configs.json";
-        save_configs_to_file(configs, file_path)?;
+    writeln!(file, "{}", json_str)?;
 
-        println!("Configurations saved to {}", file_path);
-    } else {
-        let file_path = "load_test_configs.json";
-        let mut file = File::open(file_path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-
-        let test_configs: Vec<LoadTestConfig> = serde_json::from_str(&contents)?;
-
-        for config in test_configs {
-            info!("Running load test with config: {:?}", config);
-            let (total_requests, total_duration) = run_load_test(cli_args.clone(), &config).await?;
-            info!(
-                "Completed load test - Total requests: {}, Duration: {:?}",
-                total_requests, total_duration
-            );
-
-            info!("");
-        }
-    }
+    info!("Configurations saved successfully to {}", file_path);
 
     Ok(())
+}
+
+async fn send_request_with_retry(
+    client: &Client,
+    url: &str,
+    request: &ValidationRequest,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let mut retries = 0;
+    let max_retries = 5;
+    let backoff_duration = Duration::from_secs(1);
+
+    loop {
+        trace!("Sending request to {}", url);
+
+        let response = client.post(url).json(request).send().await;
+
+        match response {
+            Ok(res) => {
+                info!("Request succeeded.");
+                return Ok(res);
+            }
+            Err(e) if retries < max_retries => {
+                retries += 1;
+                let backoff_time = backoff_duration * 2_u32.pow(retries);
+                warn!(
+                    "Request failed, retrying in {:?}. Error: {}",
+                    backoff_time, e
+                );
+                sleep(backoff_time).await;
+            }
+            Err(e) => {
+                error!("Request failed after {} retries. Error: {}", retries, e);
+                return Err(e);
+            }
+        }
+    }
 }

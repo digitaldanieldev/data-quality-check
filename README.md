@@ -23,7 +23,7 @@ graph LR
 You can download the latest binaries from the releases section.
 
 #### Environment Variables:
-Copy and rename the `.env` file, ensuring it is in the directory where your binaries are used. Make sure you configure the variables to match your environment.
+Copy and rename the `env` file to `.env` file, ensuring it is in the directory where your binaries are used. Make sure you configure the variables to match your environment. Also make sure the `data` folder found at the root of this project is in the same folder.
 
 ## Usage
 
@@ -52,7 +52,7 @@ Set the number of worker threads for the server. *Default: `2`*
 `./data-quality-server --worker-threads 4 --enable-metrics`
 
 **--log-level**  
-Set the log level for the server. Options include `debug`, `info`, `warn`, `error`. *Default: `info`*  
+Set the log level for the server. Options are `error`, `warn`, `info`, `debug` and `trace`. *Default: `info`*  
 `./data-quality-server --worker-threads 4 --enable-metrics --log-level info`
 
 **--json**  
@@ -64,13 +64,7 @@ When running the binary in this manner, no web server is started. This enables y
 
 
 ### Config-producer-proto
-After starting the data-quality-server, you need to upload compiled protobuf definitions. This requires the **protobuf-compiler** and its dependencies installed. Alternatively, you can use Docker to run the config-producer-proto:
-
-Config-producer-proto can also be built and used using:
-```
-docker compose -f docker-compose-config-producer.yml run config_producer
-```
-This will build and run a container containing all the needed dependencies. 
+After starting the data-quality-server, you need to upload compiled protobuf definitions. This requires the **protobuf-compiler** and its dependencies installed. The `data` folder found in the project root should be in the same folder as the built `config-producer-proto` binary.
 
 ##### Compile protobuf and upload
 Check the configured folder for protobuf definitions, compile them, and upload them to the data-quality-server
@@ -78,7 +72,6 @@ Check the configured folder for protobuf definitions, compile them, and upload t
 `./config-producer-proto`
 
 ##### Options:
-
 **--loop**  
 Enable looping to check for .proto file updates. *Default: `false`*  
 `./config-producer-proto --loop --interval 30`
@@ -88,8 +81,17 @@ Set the interval (in seconds) to check for .proto file updates. *Default: `30`*
 `./config-producer-proto --loop --interval 30`
 
 **--log-level**  
-Set the log level for the application. Options include `debug`, `info`, `warn`, `error`. *Default: `info`*  
+Set the log level for the application. Options are `error`, `warn`, `info`, `debug` and `trace`. *Default: `info`* 
 `./config-producer-proto --loop --interval 30 --log-level info`
+
+##### Docker
+Alternatively, you can use Docker to run the config-producer-proto:
+
+Config-producer-proto can also be built and used using:
+```
+docker compose -f docker-compose-config-producer.yml run config_producer
+```
+This will build and run a container containing all the needed dependencies and uses the env-docker environment file.
 
 
 ### Load test
@@ -98,7 +100,7 @@ Using this tool an optimal configuration can be found for the settings available
 ##### Options:
 
 **--log_level**  
-The logging level for the application. Options include `debug`, `info`, `warn`, `error`. *Default: `info`*
+The logging level for the application. Options are `error`, `warn`, `info`, `debug` and `trace`. *Default: `info`* 
 
 **--iterations**  
 The number of times to repeat the load test. *Default: `1`*

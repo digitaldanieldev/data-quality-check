@@ -98,7 +98,12 @@ async fn main() -> Result<()> {
             let descriptor_server_url = format!("http://{}/load_descriptor", server_address);
             info!("descriptor_server_url: {}", &descriptor_server_url);
 
-            match send_to_axum_server(&descriptor_server_url, &file_name, &serialized_fd_set).await
+            match send_to_data_quality_server(
+                &descriptor_server_url,
+                &file_name,
+                &serialized_fd_set,
+            )
+            .await
             {
                 Ok(success_message) => info!("{}", success_message),
                 Err(err) => eprintln!("Error sending FileDescriptorSet for {}: {}", file_name, err),
@@ -132,41 +137,67 @@ struct LoadDescriptorRequest {
     file_content: String,
 }
 
-async fn send_to_axum_server(
-    url: &str,
-    file_name: &str,
-    data: &[u8],
-) -> Result<String, Box<dyn Error>> {
-    let span = span!(Level::INFO, "send_to_axum_server");
+async fn compile_with_protoc(
+    protoc_path: &str,
+    file: &Path,
+    output_file: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let span = span!(Level::INFO, "compile_with_protoc");
     let _enter = span.enter();
 
-    let client = Client::new();
+    let status = StdCommand::new(protoc_path)
+        .arg("--proto_path")
+        .arg(file.parent().unwrap().to_str().unwrap())
+        .arg("--descriptor_set_out")
+        .arg(output_file)
+        .arg(file)
+        .status()?;
 
-    let payload = LoadDescriptorRequest {
-        file_name: file_name.to_string(),
-        file_content: base64::encode(data),
-    };
-
-    let response = client.post(url).json(&payload).send().await?;
-
-    if response.status() == StatusCode::OK {
-        let success_message = format!("Successfully sent FileDescriptorSet for: {}", file_name);
-        info!("{}", success_message);
-        Ok(success_message)
-    } else {
-        let error_message = format!(
-            "Failed to send FileDescriptorSet for {}: {:?}",
-            file_name,
-            response.status()
-        );
-        error!("{}", error_message);
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            error_message,
-        )))
+    if !status.success() {
+        return Err("Protoc compilation failed".into());
     }
+
+    Ok(())
 }
 
+#[tracing::instrument]
+fn generate_output_file(file: &Path, proto_output_dir: &Path) -> PathBuf {
+    info!("generate_output_file");
+
+    proto_output_dir.join(format!(
+        "{}.pb",
+        file.file_stem().unwrap().to_str().unwrap()
+    ))
+}
+
+#[tracing::instrument]
+async fn get_modified_time(file: &Path) -> Result<u64, Box<dyn std::error::Error>> {
+    let span = span!(Level::INFO, "get_modified_time");
+    let _enter = span.enter();
+
+    let metadata = fs::metadata(file).await?;
+    let modified_time = metadata
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    Ok(modified_time)
+}
+
+#[tracing::instrument]
+fn get_proto_files_in_directory(
+    proto_schema_input_dir: &Path,
+) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    info!("proto_files_in_directory");
+
+    WalkDir::new(proto_schema_input_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension() == Some(OsStr::new("proto")))
+        .map(|entry| Ok(entry.path().to_path_buf()))
+        .collect()
+}
+
+#[tracing::instrument]
 async fn load_proto_files(
     proto_schema_input_dir: &str,
     definitions: &mut HashMap<String, (Vec<u8>, u64)>,
@@ -182,7 +213,7 @@ async fn load_proto_files(
     let protoc_path = env::var("PROTOC_PATH")?;
     let mut updated_files = Vec::new();
 
-    for file in proto_files_in_directory(&proto_schema_input_dir)? {
+    for file in get_proto_files_in_directory(&proto_schema_input_dir)? {
         let metadata = file.metadata()?;
         let modified_time = metadata
             .modified()?
@@ -215,31 +246,16 @@ async fn load_proto_files(
 }
 
 #[tracing::instrument]
-fn resolve_relative_path(path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    info!("resolve_relative_path");
-
-    let current_dir = env::current_dir()?;
-    Ok(if Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        current_dir.join(path)
-    })
+fn log_updated_files(updated_files: &[String], definitions: &HashMap<String, (Vec<u8>, u64)>) {
+    if !updated_files.is_empty() {
+        info!("Updated files: {:?}", updated_files);
+    }
+    for (file_name, (_, timestamp)) in definitions.iter() {
+        info!("Loaded definition: {}, timestamp: {}", file_name, timestamp);
+    }
 }
 
 #[tracing::instrument]
-fn proto_files_in_directory(
-    proto_schema_input_dir: &Path,
-) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
-    info!("proto_files_in_directory");
-
-    WalkDir::new(proto_schema_input_dir)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| e.path().extension() == Some(OsStr::new("proto")))
-        .map(|entry| Ok(entry.path().to_path_buf()))
-        .collect()
-}
-
 async fn process_proto_file(
     file: &Path,
     proto_output_dir: &Path,
@@ -272,57 +288,50 @@ async fn process_proto_file(
     Ok(())
 }
 
-async fn get_modified_time(file: &Path) -> Result<u64, Box<dyn std::error::Error>> {
-    let span = span!(Level::INFO, "get_modified_time");
-    let _enter = span.enter();
+#[tracing::instrument]
+fn resolve_relative_path(path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    info!("resolve_relative_path");
 
-    let metadata = fs::metadata(file).await?;
-    let modified_time = metadata
-        .modified()?
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
-    Ok(modified_time)
+    let current_dir = env::current_dir()?;
+    Ok(if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        current_dir.join(path)
+    })
 }
 
 #[tracing::instrument]
-fn generate_output_file(file: &Path, proto_output_dir: &Path) -> PathBuf {
-    info!("generate_output_file");
-
-    proto_output_dir.join(format!(
-        "{}.pb",
-        file.file_stem().unwrap().to_str().unwrap()
-    ))
-}
-
-async fn compile_with_protoc(
-    protoc_path: &str,
-    file: &Path,
-    output_file: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let span = span!(Level::INFO, "compile_with_protoc");
+async fn send_to_data_quality_server(
+    url: &str,
+    file_name: &str,
+    data: &[u8],
+) -> Result<String, Box<dyn Error>> {
+    let span = span!(Level::INFO, "send_to_axum_server");
     let _enter = span.enter();
 
-    let status = StdCommand::new(protoc_path)
-        .arg("--proto_path")
-        .arg(file.parent().unwrap().to_str().unwrap())
-        .arg("--descriptor_set_out")
-        .arg(output_file)
-        .arg(file)
-        .status()?;
+    let client = Client::new();
 
-    if !status.success() {
-        return Err("Protoc compilation failed".into());
-    }
+    let payload = LoadDescriptorRequest {
+        file_name: file_name.to_string(),
+        file_content: base64::encode(data),
+    };
 
-    Ok(())
-}
+    let response = client.post(url).json(&payload).send().await?;
 
-#[tracing::instrument]
-fn log_updated_files(updated_files: &[String], definitions: &HashMap<String, (Vec<u8>, u64)>) {
-    if !updated_files.is_empty() {
-        info!("Updated files: {:?}", updated_files);
-    }
-    for (file_name, (_, timestamp)) in definitions.iter() {
-        info!("Loaded definition: {}, timestamp: {}", file_name, timestamp);
+    if response.status() == StatusCode::OK {
+        let success_message = format!("Successfully sent FileDescriptorSet for: {}", file_name);
+        info!("{}", success_message);
+        Ok(success_message)
+    } else {
+        let error_message = format!(
+            "Failed to send FileDescriptorSet for {}: {:?}",
+            file_name,
+            response.status()
+        );
+        error!("{}", error_message);
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            error_message,
+        )))
     }
 }

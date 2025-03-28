@@ -6,20 +6,12 @@ use opentelemetry::{global, KeyValue};
 use prost_reflect::{DescriptorPool, DynamicMessage};
 use serde_json::Value as JsonValue;
 use std::time::Instant;
-use tracing::{debug, error, info, span, Level};
+use tracing::{debug, error, info, span, Level, trace, warn};
 
 use crate::app_error::AppError;
 use crate::metrics::create_metrics;
 
-pub fn unescape_json(json_string: &str) -> Result<String, AppError> {
-    if json_string.starts_with('"') && json_string.ends_with('"') {
-        let unescaped = serde_json::from_str::<String>(json_string)
-            .map_err(|e| AppError::JsonUnescapeError(format!("Failed to unescape JSON: {}", e)))?;
-        Ok(unescaped)
-    } else {
-        Ok(json_string.to_string())
-    }
-}
+
 
 #[tracing::instrument]
 pub fn validate_json(
@@ -31,7 +23,7 @@ pub fn validate_json(
     field_value_check: Option<JsonValue>,
     enable_metrics: bool,
 ) -> Result<(), anyhow::Error> {
-    info!("Starting JSON validation process");
+    info!("Starting JSON validation process.");
 
     let meter = if enable_metrics {
         Some(global::meter("json-validation-service"))
@@ -124,6 +116,7 @@ pub fn validate_json(
         })?;
 
         if field_check.unwrap_or(false) {
+            debug!("Performing field check validation.");
             validate_json_message_content(&json_value, field_name, field_value_check).map_err(
                 |e| {
                     let error_msg = format!("Failed to validate message content: {}", e);
@@ -138,6 +131,7 @@ pub fn validate_json(
         info!("No definition_name provided. Only parsed JSON successfully.");
 
         if field_check.unwrap_or(false) {
+            debug!("Performing field check validation on parsed JSON.");
             validate_json_message_content(&json_value, field_name, field_value_check).map_err(
                 |e| {
                     let error_msg = format!("Failed to validate message content: {}", e);
@@ -150,7 +144,22 @@ pub fn validate_json(
         record_duration("only_json", field_check.unwrap_or(false));
     }
 
+    info!("JSON validation completed.");
     Ok(())
+}
+
+pub fn unescape_json(json_string: &str) -> Result<String, AppError> {
+    trace!("Attempting to unescape JSON string.");
+    
+    if json_string.starts_with('"') && json_string.ends_with('"') {
+        let unescaped = serde_json::from_str::<String>(json_string)
+            .map_err(|e| AppError::JsonUnescapeError(format!("Failed to unescape JSON: {}", e)))?;
+        info!("Successfully unescaped JSON string.");
+        Ok(unescaped)
+    } else {
+        info!("JSON string does not need unescaping.");
+        Ok(json_string.to_string())
+    }
 }
 
 pub fn validate_json_message_content(
@@ -158,24 +167,28 @@ pub fn validate_json_message_content(
     field_name: Option<String>,
     field_value_check: Option<JsonValue>,
 ) -> Result<(), String> {
+    trace!("Starting field content validation.");
+
     if let (Some(field), Some(expected_value)) = (field_name, field_value_check) {
         if let Some(actual_value) = json_value.get(&field) {
-            Ok(if actual_value != &expected_value {
+            if actual_value != &expected_value {
                 let error_msg = format!(
                     "Field '{}' value mismatch: expected {:?}, found {:?}",
                     field, expected_value, actual_value
                 );
                 error!("{}", error_msg);
                 return Err(error_msg);
-            })
+            }
+            info!("Field '{}' value matched expected value.", field);
+            Ok(())
         } else {
             let error_msg = format!("Field '{}' not found in the JSON", field);
             error!("{}", error_msg);
-            return Err(error_msg);
+            Err(error_msg)
         }
     } else {
         let error_msg = "Field name and value must be provided for validation".to_string();
         error!("{}", error_msg);
-        return Err(error_msg);
+        Err(error_msg)
     }
 }

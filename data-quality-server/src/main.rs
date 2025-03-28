@@ -17,7 +17,7 @@ use tokio::runtime::Builder;
 use tokio::sync::{RwLock, Semaphore};
 
 use data_quality_settings::{load_env_variables, load_logging_config, parse_log_level};
-use tracing::{debug, error, info, span, Level};
+use tracing::{debug, error, info, span, trace, warn, Level};
 
 pub mod app_error;
 pub mod handlers;
@@ -65,6 +65,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     runtime.block_on(async {
         if let Some(json_string) = cli_args.json {
+            info!("Received JSON to validate: {}", json_string);
             match validate_json(
                 None,
                 &json_string,
@@ -75,6 +76,7 @@ fn main() -> Result<(), anyhow::Error> {
                 cli_args.enable_metrics,
             ) {
                 Ok(_) => {
+                    info!("JSON validation passed.");
                     println!("JSON OK");
                     return Ok(());
                 }

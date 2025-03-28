@@ -1,11 +1,10 @@
 /* Licensed under the AGPL-3.0 License: https://www.gnu.org/licenses/agpl-3.0.html */
 
-use anyhow::{anyhow, Context, Result};
 use axum::{extract::Json, http::StatusCode, response::IntoResponse};
 use serde_json::json;
 
 use thiserror::Error;
-use tracing::{debug, error, info, span, Level};
+use tracing::{debug, error, info, span, Level, trace, warn};
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -39,6 +38,7 @@ impl AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
+        trace!("Converting AppError to response with status code: {:?}", self.to_status_code());
         let status_code = self.to_status_code();
         let body = Json(json!({ "error": self.to_string() }));
         (status_code, body).into_response()

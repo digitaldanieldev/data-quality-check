@@ -19,6 +19,12 @@ use crate::AppState;
 
 type DescriptorMap = Arc<Mutex<HashMap<String, Vec<u8>>>>;
 
+#[derive(Deserialize)]
+pub struct LoadDescriptorRequest {
+    pub file_name: String,
+    pub file_content: String,
+}
+
 #[tracing::instrument]
 pub fn load_descriptor(
     descriptor_pool: &mut DescriptorPool,
@@ -87,12 +93,6 @@ pub fn load_descriptors(
     }
 
     Ok(())
-}
-
-#[derive(Deserialize)]
-pub struct LoadDescriptorRequest {
-    pub file_name: String,
-    pub file_content: String,
 }
 
 pub fn rebuild_descriptor_pool(
