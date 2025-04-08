@@ -55,6 +55,10 @@ Set the number of worker threads for the server. *Default: `2`*
 Set the log level for the server. Options are `error`, `warn`, `info`, `debug` and `trace`. *Default: `info`*  
 `./data-quality-server --worker-threads 4 --enable-metrics --log-level info`
 
+### Standalone Mode
+
+##### Option
+
 **--json**  
 Provide a JSON string for validation in a standalone binary mode. *Default: `None`*  
 `./data-quality-server --json '{"key1": "value1", "key2": 42}'`
