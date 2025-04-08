@@ -31,15 +31,13 @@ The `data-quality-server` can be used in two modes:
 - **Server Mode**
 - **Standalone Binary Mode**
 
-
-### Server Mode
-
 To start the server, run:
 
 ```bash
 ./data-quality-server
 ```
 
+### Server Mode
 
 ##### Options:
 
@@ -57,7 +55,7 @@ Set the log level for the server. Options are `error`, `warn`, `info`, `debug` a
 
 ### Standalone Mode
 
-##### Option
+##### Option:
 
 **--json**  
 Provide a JSON string for validation in a standalone binary mode. *Default: `None`*  
